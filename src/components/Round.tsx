@@ -417,15 +417,30 @@ function QuestionCard({ q, focus }: { q: Question; focus: boolean }) {
 
 function Choices({ q, locked, onAnswer }: { q: Extract<Question, { kind: "choice" }>; locked: boolean; onAnswer: (o: string) => void }) {
   const two = q.options.length === 2;
+  const [picked, setPicked] = useState<string | null>(null);
   // Number keys 1–4 pick an option.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const n = Number(e.key);
-      if (!locked && n >= 1 && n <= q.options.length) onAnswer(q.options[n - 1]);
+      if (!locked && n >= 1 && n <= q.options.length) {
+        setPicked(q.options[n - 1]);
+        onAnswer(q.options[n - 1]);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [q.options, locked, onAnswer]);
+
+  // After answering, the right option turns green and a wrong pick is struck through,
+  // so you see the correction where you were looking, not only in the sheet below.
+  const mark = (o: string) =>
+    !locked || picked === null
+      ? ""
+      : o === q.answer
+        ? "!bg-[var(--basil)] !text-white !opacity-100"
+        : o === picked
+          ? "line-through !opacity-100"
+          : "";
 
   return (
     <div className={`grid gap-3 ${two ? "grid-cols-2" : "grid-cols-1"}`}>
@@ -434,9 +449,13 @@ function Choices({ q, locked, onAnswer }: { q: Extract<Question, { kind: "choice
           key={o}
           whileTap={{ scale: 0.96 }}
           disabled={locked}
-          onClick={() => onAnswer(o)}
-          className={`btn ${two ? (o === "essere" ? "btn-primary" : "btn-tomato") + " !py-6 text-2xl" : "btn-secondary justify-start text-left"}`}
+          onClick={() => {
+            setPicked(o);
+            onAnswer(o);
+          }}
+          className={`btn ${two ? (o === "essere" ? "btn-primary" : "btn-tomato") + " !py-6 text-2xl" : "btn-secondary justify-start text-left"} ${mark(o)}`}
         >
+          {o === q.answer && locked && picked !== null && <span className="sr-only">Risposta giusta: </span>}
           {o}
         </motion.button>
       ))}
