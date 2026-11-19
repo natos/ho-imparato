@@ -17,7 +17,8 @@ export async function POST(req: Request) {
   if (file.size > MAX_BYTES) return fail("That picture is too large. Try a smaller one.");
 
   let url: string;
-  if (process.env.BLOB_READ_WRITE_TOKEN) {
+  // Vercel Blob auth: a read-write token, or (newer stores) BLOB_STORE_ID + the deployment OIDC token.
+  if (process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID) {
     const blob = await put(`avatars/${user.id}.webp`, file, {
       access: "public",
       contentType: file.type,
