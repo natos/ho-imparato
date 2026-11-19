@@ -39,8 +39,7 @@ The test signs up, signs in, signs out and recovers an account using a software 
    - `SESSION_SECRET`: output of `openssl rand -base64 32`
    - `INVITE_CODE`: a phrase you share with players
    - `RP_ID` / `RP_ORIGIN`: your production domain, e.g. `example.vercel.app` / `https://example.vercel.app`
-4. Create the tables: `vercel env pull .env.local && npm run db:migrate`
-5. Deploy: `vercel --prod`
+4. Push to `main`. The GitHub repo is connected to Vercel, so every push to `main` deploys to production, and other branches get preview deploys. Each build applies pending database migrations first (`scripts/migrate.mjs`).
 
 > Passkeys are bound to one domain, so they work on the production domain only, not on preview URLs.
 
