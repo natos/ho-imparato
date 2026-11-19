@@ -11,7 +11,7 @@
   --blue-deep: #12318f;
   --tomato: #e5432e;
   --tomato-ink: #c8321f; /* AA with white text */
-  --basil: #1f8a4c;
+  --basil: #1a7a43; /* AA with white text */
   --ink: #1b2140;
   --paper: #ffffff;
   --muted: #4a5070;
@@ -26,6 +26,11 @@
   --brand: var(--blue);
   --brand-fg: #ffffff;
 
+  --ok-bg: #d9f2e2;
+  --ok-fg: #0f3d22;
+  --no-bg: #fde0da;
+  --no-fg: #5c1409;
+
   --radius-ticket: 18px;
   --radius-field: 12px;
   --shadow-hard: 0 6px 0 var(--edge);
@@ -39,10 +44,14 @@
     --bg: #101842;
     --fg: #fff3c4;
     --surface: #1a2560;
-    --edge: #05091f;
     --brand: var(--lemon);
     --brand-fg: var(--ink);
     --muted: #b8bedc;
+    --edge: #8f98d6; /* visible lines and hard shadows on navy */
+    --ok-bg: #0f3d22;
+    --ok-fg: #d9f2e2;
+    --no-bg: #4a130b;
+    --no-fg: #fde0da;
   }
 }
 :root[data-theme="dark"] {
@@ -52,10 +61,14 @@
   --bg: #101842;
   --fg: #fff3c4;
   --surface: #1a2560;
-  --edge: #05091f;
   --brand: var(--lemon);
   --brand-fg: var(--ink);
   --muted: #b8bedc;
+  --edge: #8f98d6;
+  --ok-bg: #0f3d22;
+  --ok-fg: #d9f2e2;
+  --no-bg: #4a130b;
+  --no-fg: #fde0da;
 }
 
 @theme inline {
@@ -76,9 +89,11 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-:focus-visible {
-  outline: 3px solid var(--fg);
-  outline-offset: 3px;
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--fg);
+    outline-offset: 3px;
+  }
 }
 
 .font-display {
@@ -87,6 +102,8 @@ body {
   letter-spacing: -0.01em;
 }
 
+/* Components live in a layer so Tailwind utilities (text-2xl, justify-start…) can override them. */
+@layer components {
 /* ── Ticket ─────────────────────────────────────────── */
 .ticket {
   position: relative;
@@ -248,4 +265,5 @@ body {
   .stamp {
     animation: none;
   }
+}
 }

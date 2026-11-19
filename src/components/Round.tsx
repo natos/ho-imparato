@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, MotionConfig, useAnimationControls } from "motion/react";
 import { findLevel } from "@/topics";
@@ -94,7 +94,9 @@ export function Round({
   const next = found ? found.topic.levels[found.index + 1] : undefined;
   const index = found?.index ?? 0;
 
-  const [phase, setPhase] = useState<Phase>("intro");
+  // The intro card shows on your first play of a stop; after that a round starts straight away.
+  const [phase, setPhase] = useState<Phase | null>(null);
+  const introKey = `intro-seen:${level.id}`;
   const [questions, setQuestions] = useState<Item[]>([]);
   const [i, setI] = useState(0);
   const [hearts, setHearts] = useState(HEARTS);
@@ -111,9 +113,18 @@ export function Round({
   const [saveError, setSaveError] = useState<string | null>(null);
   const shake = useAnimationControls();
   const saving = useRef(false);
+  const [saveTry, setSaveTry] = useState(0);
+  function retrySave() {
+    saving.current = false;
+    setSaveError(null);
+    setSaveTry((n) => n + 1);
+  }
 
   const q = questions[i];
   const mult = multiplier(streak);
+  // Progress counts original questions only, so a retry never moves the bar backwards.
+  const originals = questions.filter((x) => !x.retry).length;
+  const done = questions.slice(0, i).filter((x) => !x.retry).length;
 
   function start() {
     const pool = shuffle(level.build());
@@ -139,6 +150,29 @@ export function Round({
     saving.current = false;
     setPhase("play");
     sfx.pop();
+  }
+
+  useEffect(() => {
+    let seen = false;
+    try {
+      seen = localStorage.getItem(introKey) === "1";
+    } catch {
+      /* storage blocked: show the intro */
+    }
+    // Reading localStorage (and shuffling) can only happen after mount, so this effect is the right place.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (seen) start();
+    else setPhase("intro");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function begin() {
+    try {
+      localStorage.setItem(introKey, "1");
+    } catch {
+      /* fine */
+    }
+    start();
   }
 
   const end = useCallback((completed: boolean) => {
@@ -218,7 +252,7 @@ export function Round({
           ? api<Result>("/api/weekly", { topic: topicId, week, results: log })
           : api<Result>("/api/progress", { topic: topicId, level: level.id, correct, total: answeredOriginals, hearts, finished, score, results: log });
     save.then(setResult).catch((e) => setSaveError((e as Error).message));
-  }, [phase, mode, topicId, week, level.id, correct, answeredOriginals, hearts, finished, score, log]);
+  }, [phase, mode, topicId, week, level.id, correct, answeredOriginals, hearts, finished, score, log, saveTry]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -231,8 +265,8 @@ export function Round({
           </Link>
           {phase === "play" ? (
             <>
-              <div className="h-4 flex-1 overflow-hidden rounded-full border-[3px] border-[var(--edge)] bg-[var(--surface)]" role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={i} aria-label="Avanzamento">
-                <motion.div className="h-full bg-[var(--basil)]" animate={{ width: `${(i / questions.length) * 100}%` }} />
+              <div className="h-4 flex-1 overflow-hidden rounded-full border-[3px] border-[var(--edge)] bg-[var(--surface)]" role="progressbar" aria-valuemin={0} aria-valuemax={originals} aria-valuenow={done} aria-label="Avanzamento">
+                <motion.div className="h-full bg-[var(--basil)]" initial={false} animate={{ width: `${(done / Math.max(1, originals)) * 100}%` }} />
               </div>
               {!practice && <Hearts n={hearts} />}
             </>
@@ -243,7 +277,7 @@ export function Round({
 
         {phase === "play" && (
           <div className="mt-3 flex items-center justify-between text-sm font-extrabold">
-            <span aria-live="polite">{score} punti</span>
+            <span>{score} punti</span>
             {streak >= 3 && (
               <motion.span key={mult} initial={{ scale: 1.6 }} animate={{ scale: 1 }} className="rounded-full bg-[var(--tomato-ink)] px-2.5 py-0.5 text-white">
                 ×{mult} serie da {streak}
@@ -273,7 +307,7 @@ export function Round({
                 {level.questionsPerRound} questions · {HEARTS} hearts{level.timed ? " · a timer on each question" : ""}. Stars = hearts left at the end. Misses come back once for a second try.
               </p>
             )}
-            <button className="btn btn-primary" onClick={start} autoFocus>
+            <button className="btn btn-primary" onClick={begin} autoFocus>
               Inizia
             </button>
           </section>
@@ -283,7 +317,7 @@ export function Round({
           <motion.section animate={shake} className="mt-5 flex flex-1 flex-col gap-4">
             <AnimatePresence mode="wait">
               <motion.div key={q.id + i} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -40 }} transition={{ duration: 0.18 }} className="flex flex-col gap-4">
-                <QuestionCard q={q} />
+                <QuestionCard q={q} focus={q.kind === "choice"} />
                 {q.kind === "choice" && <Choices q={q} locked={!!feedback} onAnswer={(o) => answer(o, o === q.answer ? "right" : "wrong")} />}
                 {q.kind === "type" && <Typed q={q} locked={!!feedback} onAnswer={(t) => answer(t, checkTyped(t, [q.answer, ...(q.accept ?? [])]))} />}
                 {q.kind === "tiles" && (
@@ -300,7 +334,7 @@ export function Round({
           </motion.section>
         )}
 
-        {phase === "done" && practice && <PracticeResults mode={mode} correct={correct} answered={answeredOriginals} result={result} saveError={saveError} />}
+        {phase === "done" && practice && <PracticeResults mode={mode} correct={correct} answered={answeredOriginals} result={result} saveError={saveError} onRetrySave={retrySave} />}
 
         {phase === "done" && !practice && (
           <Results
@@ -311,7 +345,8 @@ export function Round({
             answered={answeredOriginals}
             result={result}
             saveError={saveError}
-            nextStop={next?.stop}
+            next={next ? { stop: next.stop, href: `/play/${topicId}/${next.id}` } : undefined}
+            onRetrySave={retrySave}
             timed={level.timed}
             onRetry={start}
           />
@@ -327,7 +362,7 @@ export function Round({
 
 function Hearts({ n }: { n: number }) {
   return (
-    <span className="flex gap-0.5" aria-label={`${n} cuori su ${HEARTS}`}>
+    <span className="flex gap-0.5" role="img" aria-label={`${n} cuori su ${HEARTS}`}>
       {Array.from({ length: HEARTS }, (_, k) => (
         <motion.svg key={k} width="24" height="24" viewBox="0 0 24 24" animate={k >= n ? { scale: [1.4, 1] } : {}} aria-hidden>
           <path
@@ -351,7 +386,7 @@ function WithGap({ text }: { text: string }) {
         <span key={k}>
           {part}
           {k < parts.length - 1 && (
-            <span className="mx-1 inline-block min-w-16 translate-y-1 border-b-[3px] border-dashed border-[var(--brand)]" aria-label="blank">
+            <span className="mx-1 inline-block min-w-16 translate-y-1 border-b-[3px] border-dashed border-[var(--brand)]" role="img" aria-label="spazio vuoto (blank)">
               &nbsp;
             </span>
           )}
@@ -361,11 +396,16 @@ function WithGap({ text }: { text: string }) {
   );
 }
 
-function QuestionCard({ q }: { q: Question }) {
+function QuestionCard({ q, focus }: { q: Question; focus: boolean }) {
   // A single word (verb) gets the big display treatment.
   const isAux = q.id.startsWith("aux-") || q.id.includes("-choice-");
+  // Move focus to each new question so screen readers read it (typed questions focus their input instead).
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus) ref.current?.focus({ preventScroll: true });
+  }, [focus]);
   return (
-    <div className="ticket flex flex-col gap-2 p-5">
+    <div ref={ref} tabIndex={-1} className="ticket flex flex-col gap-2 p-5 focus:outline-none">
       <p className="font-bold">{q.task}</p>
       <p className={`font-extrabold leading-snug ${isAux ? "font-display text-5xl" : "text-2xl"}`} lang={q.kind === "tiles" ? "en" : "it"}>
         <WithGap text={q.prompt} />
@@ -407,7 +447,15 @@ function Choices({ q, locked, onAnswer }: { q: Extract<Question, { kind: "choice
 function Typed({ locked, onAnswer }: { q: Extract<Question, { kind: "type" }>; locked: boolean; onAnswer: (t: string) => void }) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLInputElement>(null);
+  const caret = useRef<number | null>(null);
   useEffect(() => ref.current?.focus(), []);
+  // After an accent key, put the cursor right after the inserted letter (React would leave it at the end).
+  useLayoutEffect(() => {
+    if (caret.current === null) return;
+    ref.current?.focus();
+    ref.current?.setSelectionRange(caret.current, caret.current);
+    caret.current = null;
+  }, [value]);
   return (
     <form
       onSubmit={(e) => {
@@ -430,7 +478,16 @@ function Typed({ locked, onAnswer }: { q: Extract<Question, { kind: "type" }>; l
         aria-label="La tua risposta (your answer)"
         placeholder="Scrivi qui (type here)"
       />
-      <AccentKeys onKey={(k) => (setValue((v) => v + k), ref.current?.focus())} />
+      <AccentKeys
+        onKey={(k) => {
+          // Insert where the cursor is (or replace the selection), and keep the keyboard open.
+          const el = ref.current;
+          const from = el?.selectionStart ?? value.length;
+          const to = el?.selectionEnd ?? value.length;
+          caret.current = from + k.length;
+          setValue(value.slice(0, from) + k + value.slice(to));
+        }}
+      />
       <button className="btn btn-primary" disabled={locked || !value.trim()}>
         Controlla
       </button>
@@ -444,7 +501,7 @@ function AccentKeys({ onKey }: { onKey: (k: string) => void }) {
       <p className="text-sm text-[var(--muted)]">Need an accent? Tap to add it:</p>
       <div className="flex gap-2" role="group" aria-label="Accented letters">
         {["à", "è", "é", "ì", "ò", "ù"].map((k) => (
-          <button key={k} type="button" onClick={() => onKey(k)} className="h-11 flex-1 rounded-xl border-[2px] border-[var(--locked)] bg-[var(--surface)] text-lg font-bold">
+          <button key={k} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => onKey(k)} className="h-11 flex-1 rounded-xl border-[2px] border-[var(--locked)] bg-[var(--surface)] text-lg font-bold">
             {k}
           </button>
         ))}
@@ -504,7 +561,7 @@ function FeedbackSheet({ f, onNext, last }: { f: Feedback; onNext: () => void; l
       animate={{ y: 0 }}
       exit={{ y: "100%" }}
       transition={{ type: "spring", stiffness: 420, damping: 34 }}
-      className={`fixed inset-x-0 bottom-0 z-50 border-t-[3px] border-[var(--edge)] px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-4 ${ok ? "bg-[#d9f2e2] text-[#0f3d22]" : "bg-[#fde0da] text-[#5c1409]"}`}
+      className={`fixed inset-x-0 bottom-0 z-50 border-t-[3px] border-[var(--edge)] px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-4 ${ok ? "bg-[var(--ok-bg)] text-[var(--ok-fg)]" : "bg-[var(--no-bg)] text-[var(--no-fg)]"}`}
     >
       <div className="mx-auto flex max-w-[560px] flex-col gap-2">
         <p className="font-display text-2xl">
@@ -525,7 +582,7 @@ function FeedbackSheet({ f, onNext, last }: { f: Feedback; onNext: () => void; l
         <button
           ref={btn}
           disabled={used}
-          className={`btn mt-1 ${ok ? "!bg-[#1f8a4c] !text-white" : "!bg-[#c8321f] !text-white"}`}
+          className={`btn mt-1 ${ok ? "bg-[var(--basil)] text-white" : "bg-[var(--tomato-ink)] text-white"}`}
           onClick={() => {
             if (used) return;
             setUsed(true);
@@ -547,9 +604,10 @@ function Results({
   answered,
   result,
   saveError,
-  nextStop,
+  next,
   timed,
   onRetry,
+  onRetrySave,
 }: {
   timed?: boolean;
   stars: number;
@@ -559,8 +617,9 @@ function Results({
   answered: number;
   result: Result | null;
   saveError: string | null;
-  nextStop?: string;
+  next?: { stop: string; href: string };
   onRetry: () => void;
+  onRetrySave: () => void;
 }) {
   useEffect(() => {
     if (!finished) return;
@@ -573,7 +632,7 @@ function Results({
   return (
     <section className="ticket mt-6 flex flex-col items-center gap-4 p-6 text-center">
       <h1 className="font-display text-4xl">{headline}</h1>
-      <div className="flex gap-3" aria-label={`${stars} stelle su 3`}>
+      <div className="flex gap-3" role="img" aria-label={`${stars} stelle su 3`}>
         {[0, 1, 2].map((k) => (
           <motion.svg
             key={k}
@@ -605,17 +664,25 @@ function Results({
         </p>
       )}
       {result?.newBest && <span className="stamp">Record!</span>}
-      {result?.unlockedNext && nextStop && <p className="font-bold text-[var(--success)]">Hai sbloccato {nextStop}!</p>}
-      {saveError && (
-        <p role="alert" className="error">
-          Couldn&apos;t save this round: {saveError}
-        </p>
-      )}
+      {result?.unlockedNext && next && <p className="font-bold text-[var(--success)]">Hai sbloccato {next.stop}!</p>}
+      {saveError && <SaveError message={saveError} onRetry={onRetrySave} />}
       <div className="flex w-full flex-col gap-2">
-        <button className="btn btn-primary" onClick={onRetry}>
-          {finished && stars === 3 ? "Gioca ancora" : "Riprova"}
-        </button>
-        <Link href="/" className="btn btn-secondary">
+        {/* Once the round is saved with a star, the next stop is open: make going on the obvious move. */}
+        {finished && next && result ? (
+          <>
+            <Link href={next.href} className="btn btn-primary" onClick={() => sfx.pop()}>
+              Avanti: {next.stop}
+            </Link>
+            <button className="btn btn-secondary" onClick={onRetry}>
+              {stars === 3 ? "Gioca ancora" : "Riprova"}
+            </button>
+          </>
+        ) : (
+          <button className="btn btn-primary" onClick={onRetry}>
+            {finished && stars === 3 ? "Gioca ancora" : "Riprova"}
+          </button>
+        )}
+        <Link href="/" className="btn btn-ghost">
           Torna alla mappa
         </Link>
       </div>
@@ -629,7 +696,9 @@ function PracticeResults({
   answered,
   result,
   saveError,
+  onRetrySave,
 }: {
+  onRetrySave: () => void;
   mode: Mode;
   correct: number;
   answered: number;
@@ -655,14 +724,22 @@ function PracticeResults({
           +{result.xp} punti{mode === "sfida" && result.firstAttempt === false ? " · replay, practice only" : ""}
         </p>
       )}
-      {saveError && (
-        <p role="alert" className="error">
-          Couldn&apos;t save: {saveError}
-        </p>
-      )}
+      {saveError && <SaveError message={saveError} onRetry={onRetrySave} />}
       <Link href="/" className="btn btn-primary">
         Torna alla mappa
       </Link>
     </section>
+  );
+}
+
+/** A failed save keeps the round on screen and offers another try, instead of losing it. */
+function SaveError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div role="alert" className="flex w-full flex-col gap-2">
+      <p className="error">Round not saved yet: {message}</p>
+      <button className="btn btn-tomato" onClick={onRetry}>
+        Riprova a salvare
+      </button>
+    </div>
   );
 }

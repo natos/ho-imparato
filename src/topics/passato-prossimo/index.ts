@@ -135,7 +135,7 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
     return [
       {
         kind: "type" as const,
-        task: `Write the past participle of “${v.inf}”`,
+        task: "Write the participle",
         skill: `pp:${v.inf}`,
         id: `${idPrefix}-type-${v.inf}`,
         prompt: `${v.inf} → ___`,
@@ -172,7 +172,7 @@ function auxExplain(v: Verb) {
 function auxQuestions(): Question[] {
   return fixedAux([...regulars, ...irr1]).map((v) => ({
     kind: "choice" as const,
-    task: "Does this verb take avere or essere?",
+    task: "Avere or essere?",
     skill: `aux:${v.inf}`,
     id: `aux-${v.inf}`,
     prompt: v.inf,
@@ -197,7 +197,7 @@ function auxFormQuestions(): Question[] {
     // Production: write auxiliary + participle — both decisions at once.
     out.push({
       kind: "type",
-      task: "Write the verb in the passato prossimo (auxiliary + participle)",
+      task: "Write the passato prossimo",
       skill: `auxform:${v.inf}`,
       id: `auxform-type-${v.inf}`,
       prompt: `${s.text} ___${rest(v)}. (${v.inf})`,
@@ -211,7 +211,7 @@ function auxFormQuestions(): Question[] {
     const sameAuxWrong = Object.values(essere ? ESSERE : AVERE).filter((f) => f !== aux);
     out.push({
       kind: "choice",
-      task: "Pick the right form of avere or essere",
+      task: "Pick the form of avere/essere",
       skill: `auxform:${v.inf}`,
       id: `auxform-${v.inf}`,
       prompt: `${s.text} ___ ${v.pp.slice(0, -1)}_${rest(v)}.`,
@@ -247,7 +247,7 @@ function agreementQuestions(): Question[] {
       // About 1 in 4 is typed, so the ending has to be produced, not just spotted.
       out.push(
         k === 0
-          ? { ...base, kind: "type", task: "Write the participle with the right ending", prompt: `${s.text} ${aux} ___${rest(v)}. (${v.inf})`, answer: pp }
+          ? { ...base, kind: "type", task: "Write the participle with its ending", prompt: `${s.text} ${aux} ___${rest(v)}. (${v.inf})`, answer: pp }
           : { ...base, kind: "choice", task: "Pick the right ending", prompt: `${s.text} ${aux} ___${rest(v)}.`, options: forms, answer: pp },
       );
     });
@@ -296,7 +296,7 @@ function reflexiveQuestions(): Question[] {
         },
         {
           kind: "type",
-          task: "Write the verb in the passato prossimo: pronoun + auxiliary + participle",
+          task: "Write the passato prossimo, with the pronoun",
           skill: `refl:${r.inf}`,
           id: `${id}-type`,
           prompt: `${s.text} ___${rest}. (${r.inf})`,

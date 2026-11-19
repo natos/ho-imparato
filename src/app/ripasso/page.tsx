@@ -1,3 +1,4 @@
+import { Splash } from "@/components/Splash";
 import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -8,7 +9,7 @@ import { Round } from "@/components/Round";
 
 export default function RipassoPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<Splash />}>
       <Gate />
     </Suspense>
   );

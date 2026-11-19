@@ -1,3 +1,4 @@
+import { Splash } from "@/components/Splash";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
@@ -7,7 +8,7 @@ import { Round } from "@/components/Round";
 
 export default function SfidaPage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<Splash />}>
       <Gate />
     </Suspense>
   );

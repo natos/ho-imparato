@@ -1,3 +1,4 @@
+import { Splash } from "@/components/Splash";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth";
 import { getBoard, getMyStars } from "@/lib/board";
@@ -34,13 +35,5 @@ async function Gate() {
       review={review}
       weekly={{ played: weekly.played, xp: weekly.xp, resetsAt: weekly.resetsAt.toISOString() }}
     />
-  );
-}
-
-function Splash() {
-  return (
-    <main className="flex flex-1 items-center justify-center">
-      <p className="font-display wordmark text-5xl text-[var(--brand)]">Ho imparato.</p>
-    </main>
   );
 }

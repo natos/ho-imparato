@@ -71,8 +71,8 @@ export function Profile({ user }: { user: CurrentUser }) {
 
       <section className="ticket flex items-center gap-4 p-5">
         <div className="flex-1">
-          <h2 className="font-display text-xl">Suoni</h2>
-          <p className="text-[var(--muted)]">Sound effects for right and wrong answers.</p>
+          <h2 className="font-display text-xl">Suoni e voce</h2>
+          <p className="text-[var(--muted)]">Sound effects and the spoken Italian.</p>
         </div>
         <SoundToggle />
       </section>

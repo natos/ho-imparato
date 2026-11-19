@@ -1,3 +1,4 @@
+import { Splash } from "@/components/Splash";
 import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
@@ -8,7 +9,7 @@ import { Round } from "@/components/Round";
 
 export default function PlayPage({ params }: PageProps<"/play/[topic]/[level]">) {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<Splash />}>
       <Gate params={params} />
     </Suspense>
   );

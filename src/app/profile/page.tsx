@@ -1,3 +1,4 @@
+import { Splash } from "@/components/Splash";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
@@ -5,7 +6,7 @@ import { Profile } from "@/components/Profile";
 
 export default function ProfilePage() {
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<Splash />}>
       <Gate />
     </Suspense>
   );

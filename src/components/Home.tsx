@@ -60,9 +60,6 @@ export function Home({
           <h2 id="route-title" className="font-display text-2xl">
             Passato prossimo
           </h2>
-          <p className="text-[var(--muted)]">
-            Da {levels[0].stop} a {levels[levels.length - 1].stop}. Each stop teaches one rule.
-          </p>
 
           <ol className="mt-4 flex flex-col">
             {levels.map((level, i) => {
@@ -205,10 +202,10 @@ function Duel({
 
 function daysUntil(iso: string) {
   const d = Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
-  return d <= 1 ? "domani" : `tra ${d} giorni`;
+  return d <= 1 ? "Nuova domani" : `Nuova tra ${d} giorni`;
 }
 
-/** Today's extras: the Ripasso deck and the weekly challenge. */
+/** Today's extras: Ripasso only when something is due, the weekly challenge shrinks to a row once played. */
 function Today({
   review,
   weekly,
@@ -218,30 +215,42 @@ function Today({
   weekly: { played: boolean; xp: number; resetsAt: string };
   anyCleared: boolean;
 }) {
-  if (!anyCleared && review.due === 0) return null; // nothing to review before the first stop
+  if (!anyCleared) return null; // nothing to review or challenge before the first stop
+  const showReview = review.due > 0;
   const urgent = review.due >= 5;
+
+  const ripasso = showReview && (
+    <Link
+      href="/ripasso"
+      className={`ticket flex flex-col gap-1 p-4 ${urgent ? "bg-[var(--brand)] text-[var(--brand-fg)]" : ""}`}
+      aria-label={`Ripasso: ${review.due} da ripassare`}
+    >
+      <span className="font-display text-xl">Ripasso</span>
+      <span className="text-3xl font-extrabold leading-none">{review.due}</span>
+      <span className={`text-sm ${urgent ? "" : "text-[var(--muted)]"}`}>da ripassare</span>
+    </Link>
+  );
+
+  if (weekly.played) {
+    return (
+      <div className="flex flex-col gap-3">
+        {ripasso}
+        <Link href="/sfida" className="ticket flex items-center gap-3 px-4 py-3" aria-label="La sfida della settimana, fatta">
+          <span className="font-bold">Sfida della settimana</span>
+          <span className="font-bold text-[var(--success)]">Fatta ✓ +{weekly.xp}</span>
+          <span className="ml-auto text-sm text-[var(--muted)]">{daysUntil(weekly.resetsAt)}</span>
+        </Link>
+      </div>
+    );
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <Link
-        href="/ripasso"
-        className={`ticket flex flex-col gap-1 p-4 ${urgent ? "!bg-[var(--brand)] !text-[var(--brand-fg)]" : ""}`}
-        aria-label={`Ripasso: ${review.due} da ripassare`}
-      >
-        <span className="font-display text-xl">Ripasso</span>
-        <span className="text-3xl font-extrabold leading-none">{review.due}</span>
-        <span className={`text-sm ${urgent ? "" : "text-[var(--muted)]"}`}>
-          {review.due === 0 ? "all done for now" : "to review"}
-          {review.remembered > 0 && ` · ${review.remembered} ricordati`}
-        </span>
-      </Link>
+    <div className={`grid gap-3 ${showReview ? "grid-cols-2" : "grid-cols-1"}`}>
+      {ripasso}
       <Link href="/sfida" className="ticket flex flex-col gap-1 p-4" aria-label="La sfida della settimana">
         <span className="font-display text-xl leading-tight">Sfida della settimana</span>
-        {weekly.played ? (
-          <span className="text-sm font-bold text-[var(--success)]">Fatta! +{weekly.xp} punti</span>
-        ) : (
-          <span className="stamp self-start !text-xs">×2 punti</span>
-        )}
-        <span className="text-sm text-[var(--muted)]">New one {daysUntil(weekly.resetsAt)}</span>
+        <span className="stamp self-start text-xs">×2 punti</span>
+        <span className="text-sm text-[var(--muted)]">{daysUntil(weekly.resetsAt)}</span>
       </Link>
     </div>
   );

@@ -14,7 +14,7 @@ export function SoundToggle() {
       }}
       role="switch"
       aria-checked={!muted}
-      aria-label="Suoni (sound effects)"
+      aria-label="Suoni e voce (sounds and speech)"
       className={`flex h-11 items-center gap-2 rounded-full border-[3px] border-[var(--edge)] px-3 font-extrabold ${
         muted ? "bg-[var(--surface)] text-[var(--muted)]" : "bg-[var(--basil)] text-white"
       }`}
