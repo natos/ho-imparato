@@ -3,8 +3,11 @@
  * generators; the game engine knows nothing about Italian grammar.
  */
 
+/** What the player has to do, in one plain sentence. Shown above every prompt. */
+type Base = { task: string };
+
 /** One question as the engine sees it. */
-export type Question =
+export type Question = Base & (
   | {
       kind: "choice"; // tap one of 2–4 options (avere/essere is a 2-option choice)
       id: string;
@@ -30,7 +33,7 @@ export type Question =
       tiles: string[]; // shuffled by the engine; may include distractors
       answer: string[]; // correct order
       explain: string;
-    };
+    });
 
 export type Level = {
   id: string; // stable — progress rows reference it

@@ -8,6 +8,7 @@ import type { Question } from "../types";
 
 const t = (id: string, prompt: string, answer: string, hint: string, explain: string, accept?: string[]): Question => ({
   kind: "type",
+  task: "Write the verb in the passato prossimo (auxiliary + participle). In brackets: who, and which verb.",
   id: `s-${id}`,
   prompt,
   hint,
@@ -41,6 +42,7 @@ export const SENTENCES: Question[] = [
 
 const tiles = (id: string, prompt: string, answer: string[], distractors: string[], explain: string): Question => ({
   kind: "tiles",
+  task: "Tap the words in order to say this in Italian. Two words don't belong.",
   id: `tiles-${id}`,
   prompt,
   tiles: [...answer, ...distractors],
@@ -59,6 +61,7 @@ export const TILES: Question[] = [
 
 const c = (id: string, prompt: string, options: string[], answer: string, explain: string, hint?: string): Question => ({
   kind: "choice",
+  task: options.length === 2 ? "Pick the auxiliary" : "Pick the right ending",
   id: `boss-${id}`,
   prompt,
   hint,

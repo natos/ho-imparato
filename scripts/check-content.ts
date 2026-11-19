@@ -31,7 +31,7 @@ for (const level of passatoProssimo.levels) {
       if (q.options.length < 2) fail(`too few options: ${q.id}`);
     }
     if (q.kind === "tiles" && !q.answer.every((w) => q.tiles.includes(w))) fail(`tiles missing answer word: ${q.id}`);
-    if ((q.kind === "choice" || q.kind === "type") && !q.prompt.includes("___") && !q.id.startsWith("aux-") && !q.prompt.startsWith("Participio"))
+    if ((q.kind === "choice" || q.kind === "type") && !q.prompt.includes("___") && !q.id.startsWith("aux-") && !q.id.includes("-choice-"))
       fail(`no gap in prompt: ${q.id}`);
     if (!q.explain) fail(`missing explanation: ${q.id}`);
   }

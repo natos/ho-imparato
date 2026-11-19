@@ -19,7 +19,7 @@ const shuffle = <T,>(xs: T[]) => [...xs].sort(() => Math.random() - 0.5);
 function solved(q: Question): string | null {
   if (q.kind === "tiles") return q.answer.join(" ");
   if (q.id.startsWith("aux-")) return null;
-  if (q.prompt.startsWith("Participio")) return q.answer;
+  if (q.task === "Pick the past participle") return `${q.prompt}, ${q.answer}`;
   if (!q.prompt.includes("___")) return null;
   return q.prompt
     .replace("___", q.answer)
@@ -250,14 +250,34 @@ function Hearts({ n }: { n: number }) {
   );
 }
 
+/** Renders "___" as a visible blank to fill. */
+function WithGap({ text }: { text: string }) {
+  const parts = text.split("___");
+  return (
+    <>
+      {parts.map((part, k) => (
+        <span key={k}>
+          {part}
+          {k < parts.length - 1 && (
+            <span className="mx-1 inline-block min-w-16 translate-y-1 border-b-[3px] border-dashed border-[var(--brand)]" aria-label="blank">
+              &nbsp;
+            </span>
+          )}
+        </span>
+      ))}
+    </>
+  );
+}
+
 function QuestionCard({ q }: { q: Question }) {
-  const isAux = q.id.startsWith("aux-");
+  // A single word (verb) gets the big display treatment.
+  const isAux = q.id.startsWith("aux-") || q.id.includes("-choice-");
   return (
     <div className="ticket flex flex-col gap-2 p-5">
-      <p className="text-sm font-bold text-[var(--muted)]">
-        {q.kind === "tiles" ? "Build the sentence" : isAux ? "Avere o essere?" : q.kind === "type" ? "Write the missing words" : "Choose"}
+      <p className="font-bold">{q.task}</p>
+      <p className={`font-extrabold leading-snug ${isAux ? "font-display text-5xl" : "text-2xl"}`} lang={q.kind === "tiles" ? "en" : "it"}>
+        <WithGap text={q.prompt} />
       </p>
-      <p className={`font-extrabold leading-snug ${isAux ? "font-display text-5xl" : "text-2xl"}`}>{q.prompt}</p>
       {"hint" in q && q.hint && <p className="text-[var(--muted)]">{q.hint}</p>}
     </div>
   );
@@ -316,7 +336,7 @@ function Typed({ locked, onAnswer }: { q: Extract<Question, { kind: "type" }>; l
         spellCheck={false}
         lang="it"
         aria-label="La tua risposta (your answer)"
-        placeholder="…"
+        placeholder="Scrivi qui (type here)"
       />
       <AccentKeys onKey={(k) => (setValue((v) => v + k), ref.current?.focus())} />
       <button className="btn btn-primary" disabled={locked || !value.trim()}>
@@ -328,12 +348,15 @@ function Typed({ locked, onAnswer }: { q: Extract<Question, { kind: "type" }>; l
 
 function AccentKeys({ onKey }: { onKey: (k: string) => void }) {
   return (
-    <div className="flex gap-2" aria-label="Accented letters">
-      {["à", "è", "é", "ì", "ò", "ù"].map((k) => (
-        <button key={k} type="button" onClick={() => onKey(k)} className="h-11 flex-1 rounded-xl border-[2.5px] border-[var(--edge)] bg-[var(--surface)] text-lg font-bold">
-          {k}
-        </button>
-      ))}
+    <div className="flex flex-col gap-1.5">
+      <p className="text-sm text-[var(--muted)]">Need an accent? Tap to add it:</p>
+      <div className="flex gap-2" role="group" aria-label="Accented letters">
+        {["à", "è", "é", "ì", "ò", "ù"].map((k) => (
+          <button key={k} type="button" onClick={() => onKey(k)} className="h-11 flex-1 rounded-xl border-[2px] border-[var(--locked)] bg-[var(--surface)] text-lg font-bold">
+            {k}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -345,7 +368,7 @@ function Tiles({ q, locked, onAnswer }: { q: Extract<Question, { kind: "tiles" }
   return (
     <div className="flex flex-col gap-4">
       <div className="flex min-h-16 flex-wrap items-center gap-2 rounded-xl border-[2.5px] border-dashed border-[var(--edge)] p-3" aria-live="polite">
-        {picked.length === 0 && <span className="text-[var(--muted)]">Tap the words in order</span>}
+        {picked.length === 0 && <span className="text-[var(--muted)]">Your sentence appears here</span>}
         {picked.map((k) => (
           <motion.button layoutId={`tile-${k}`} key={k} disabled={locked} onClick={() => setPicked((p) => p.filter((x) => x !== k))} className="rounded-lg border-[2.5px] border-[var(--edge)] bg-[var(--lemon)] px-3 py-1.5 text-lg font-bold text-[var(--ink)]">
             {q.tiles[k]}

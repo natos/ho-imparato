@@ -76,6 +76,7 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
     return [
       {
         kind: "type" as const,
+        task: `Write the past participle of “${v.inf}”`,
         id: `${idPrefix}-type-${v.inf}`,
         prompt: `${v.inf} → ___`,
         hint: v.en,
@@ -84,8 +85,9 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
       },
       {
         kind: "choice" as const,
+        task: "Pick the past participle",
         id: `${idPrefix}-choice-${v.inf}`,
-        prompt: `Participio passato di ${v.inf}?`,
+        prompt: v.inf,
         hint: v.en,
         options: shuffle([v.pp, ...shuffle(options.filter((o) => o !== v.pp)).slice(0, 2)]),
         answer: v.pp,
@@ -100,6 +102,7 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
 function auxQuestions(): Question[] {
   return fixedAux([...regulars, ...irr1]).map((v) => ({
     kind: "choice" as const,
+    task: "Does this verb take avere or essere?",
     id: `aux-${v.inf}`,
     prompt: v.inf,
     hint: v.en,
@@ -125,6 +128,7 @@ function auxFormQuestions(): Question[] {
     const sameAuxWrong = Object.values(essere ? ESSERE : AVERE).filter((f) => f !== aux);
     out.push({
       kind: "choice",
+      task: "Pick the right form of avere or essere",
       id: `auxform-${v.inf}-${s.person}-${s.g}`,
       prompt: `${s.text} ___ ${pp}.`,
       hint: `${v.inf}: ${v.en}`,
@@ -150,6 +154,7 @@ function agreementQuestions(): Question[] {
       const forms = [agree(v.pp, "m", false), agree(v.pp, "f", false), agree(v.pp, "m", true), agree(v.pp, "f", true)];
       out.push({
         kind: "choice",
+        task: "Pick the right ending",
         id: `agree-${v.inf}-${s.text}`,
         prompt: `${s.text} ${aux} ___.`,
         hint: `${v.inf}: ${v.en}`,
@@ -185,6 +190,7 @@ function reflexiveQuestions(): Question[] {
       out.push(
         {
           kind: "choice",
+          task: "Pick the reflexive pronoun",
           id: `${id}-pron`,
           prompt: `${s.text} ___ ${aux} ${pp}${rest}.`,
           hint: r.en,
@@ -194,6 +200,7 @@ function reflexiveQuestions(): Question[] {
         },
         {
           kind: "choice",
+          task: "Pick the verb in the passato prossimo",
           id: `${id}-form`,
           prompt: `${s.text} ___${rest}. (${r.inf})`,
           hint: r.en,
@@ -203,6 +210,7 @@ function reflexiveQuestions(): Question[] {
         },
         {
           kind: "type",
+          task: "Write the verb in the passato prossimo: pronoun + auxiliary + participle",
           id: `${id}-type`,
           prompt: `${s.text} ___${rest}. (${r.inf})`,
           hint: r.en,
