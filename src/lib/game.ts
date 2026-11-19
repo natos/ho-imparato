@@ -3,7 +3,12 @@
 export const HEARTS = 3;
 export const BASE_POINTS = 10;
 export const MAX_MULTIPLIER = 3;
-export const BOSS_SECONDS = 150;
+export const MAX_RETRIES = 2; // misses asked again per round
+
+/** Boss timer per question: typing on a phone needs longer than tapping. */
+export function secondsFor(kind: "choice" | "type" | "tiles") {
+  return kind === "choice" ? 10 : kind === "type" ? 20 : 25;
+}
 
 /** Streak multiplier: ×1, then +0.5 every 3 correct in a row, up to ×3. */
 export function multiplier(streak: number) {
@@ -11,7 +16,7 @@ export function multiplier(streak: number) {
 }
 
 export function maxScore(questions: number) {
-  return questions * BASE_POINTS * MAX_MULTIPLIER;
+  return (questions + MAX_RETRIES) * BASE_POINTS * MAX_MULTIPLIER;
 }
 
 /** Stars = hearts left at the end. Running out of hearts (or time) = 0 stars. */
@@ -33,11 +38,25 @@ const noAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 
 export type Verdict = "right" | "accent" | "wrong";
 
-/** Case and punctuation never matter. A missing accent (e for è) counts, with a nudge. */
+/** "e'" / "e`" (English keyboards) → è, so they compare as an accented letter. */
+const apostropheAccents = (s: string) => s.replace(/([aeiou])['`]/g, (_, v: string) => ({ a: "à", e: "è", i: "ì", o: "ò", u: "ù" })[v] ?? v);
+
+/**
+ * Case and punctuation never matter. A wrong or missing accent inside a word counts,
+ * with a nudge. But "è" (is) typed as "e" (and) is a different word, so it's wrong.
+ */
 export function checkTyped(input: string, answers: string[]): Verdict {
-  const a = strip(input);
+  const a = strip(apostropheAccents(input.toLowerCase()));
   if (!a) return "wrong";
   if (answers.some((x) => strip(x) === a)) return "right";
-  if (answers.some((x) => noAccents(strip(x)) === noAccents(a))) return "accent";
-  return "wrong";
+  const nearMiss = (x: string) => {
+    const want = strip(x).split(" ");
+    const got = a.split(" ");
+    if (want.length !== got.length) return false;
+    return want.every((w, k) => {
+      if (w === "è") return ["è", "é"].includes(got[k]);
+      return noAccents(w) === noAccents(got[k]);
+    });
+  };
+  return answers.some(nearMiss) ? "accent" : "wrong";
 }

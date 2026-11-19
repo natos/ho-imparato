@@ -5,13 +5,15 @@ import Link from "next/link";
 import { AnimatePresence, motion, MotionConfig, useAnimationControls } from "motion/react";
 import { findLevel } from "@/topics";
 import type { Question } from "@/topics/types";
-import { BASE_POINTS, BOSS_SECONDS, HEARTS, checkTyped, multiplier, starsFor, type Verdict } from "@/lib/game";
+import { BASE_POINTS, HEARTS, MAX_RETRIES, checkTyped, multiplier, secondsFor, starsFor, type Verdict } from "@/lib/game";
 import { sfx, speak, starSound } from "@/lib/sfx";
 import { api } from "@/lib/api";
 
 type Phase = "intro" | "play" | "done";
-type Feedback = { verdict: Verdict; question: Question; given: string; points: number };
-type Result = { stars: number; best: number; newBest: boolean; unlockedNext: boolean };
+/** A question in the round queue. Retries are misses asked again a few questions later. */
+type Item = Question & { retry?: boolean };
+type Feedback = { verdict: Verdict; question: Item; given: string; points: number; timedOut?: boolean };
+type Result = { stars: number; best: number; newBest: boolean; unlockedNext: boolean; xp: number; mastered: boolean };
 
 const shuffle = <T,>(xs: T[]) => [...xs].sort(() => Math.random() - 0.5);
 
@@ -34,15 +36,17 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
   const next = topic.levels[index + 1];
 
   const [phase, setPhase] = useState<Phase>("intro");
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [questions, setQuestions] = useState<Item[]>([]);
   const [i, setI] = useState(0);
   const [hearts, setHearts] = useState(HEARTS);
   const [streak, setStreak] = useState(0);
   const [score, setScore] = useState(0);
   const [correct, setCorrect] = useState(0);
   const [missed, setMissed] = useState<string[]>([]);
+  const [answeredOriginals, setAnsweredOriginals] = useState(0);
+  const [retriesLeft, setRetriesLeft] = useState(MAX_RETRIES);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [secondsLeft, setSecondsLeft] = useState(BOSS_SECONDS);
+  const [secondsLeft, setSecondsLeft] = useState(0);
   const [finished, setFinished] = useState(false);
   const [result, setResult] = useState<Result | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -54,8 +58,11 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
 
   function start() {
     const pool = shuffle(level.build());
-    const round = pool.slice(0, level.questionsPerRound).map((x) =>
-      x.kind === "tiles" ? { ...x, tiles: shuffle(x.tiles) } : x.kind === "choice" && x.options.length > 2 ? { ...x, options: shuffle(x.options) } : x,
+    const picked = level.pick ? level.pick(pool, level.questionsPerRound) : pool.slice(0, level.questionsPerRound);
+    // Shuffle every option list (so the answer is never "always first"),
+    // except avere/essere, which keeps a fixed left/right position on purpose.
+    const round = picked.map((x) =>
+      x.kind === "tiles" ? { ...x, tiles: shuffle(x.tiles) } : x.kind === "choice" && !x.id.startsWith("aux-") ? { ...x, options: shuffle(x.options) } : x,
     );
     setQuestions(round);
     setI(0);
@@ -64,8 +71,10 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
     setScore(0);
     setCorrect(0);
     setMissed([]);
+    setAnsweredOriginals(0);
+    setRetriesLeft(MAX_RETRIES);
     setFeedback(null);
-    setSecondsLeft(BOSS_SECONDS);
+    setSecondsLeft(round[0] ? secondsFor(round[0].kind) : 0);
     setResult(null);
     setSaveError(null);
     saving.current = false;
@@ -78,48 +87,60 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
     setPhase("done");
   }, []);
 
-  // Boss timer
-  useEffect(() => {
-    if (!level.timed || phase !== "play" || feedback) return;
-    const t = setTimeout(() => {
-      if (secondsLeft <= 1) {
-        sfx.nope();
-        end(false);
-        return;
-      }
-      setSecondsLeft(secondsLeft - 1);
-      if (secondsLeft <= 11) sfx.tick();
-    }, 1000);
-    return () => clearTimeout(t);
-  }, [level.timed, phase, feedback, secondsLeft, end]);
-
-  function answer(given: string, verdict: Verdict) {
+  function answer(given: string, verdict: Verdict, timedOut = false) {
     if (!q || feedback) return;
     const ok = verdict !== "wrong";
     let points = 0;
+    if (!q.retry) setAnsweredOriginals((n) => n + 1);
     if (ok) {
-      points = Math.round(BASE_POINTS * mult);
+      // A retry is a second chance: half points.
+      points = Math.round(BASE_POINTS * mult * (q.retry ? 0.5 : 1));
       setScore((s) => s + points);
       setStreak((s) => s + 1);
-      setCorrect((c) => c + 1);
+      if (!q.retry) setCorrect((c) => c + 1);
       sfx.bravo();
       const line = solved(q);
       if (line) speak(line);
     } else {
       setStreak(0);
-      setHearts((h) => h - 1);
-      setMissed((m) => [...m, q.id]);
       sfx.nope();
       void shake.start({ x: [0, -12, 12, -8, 8, 0], transition: { duration: 0.35 } });
+      // Hear the right version too, once the buzz is over.
+      const line = solved(q);
+      if (line) setTimeout(() => speak(line), 600);
+      if (!q.retry) {
+        setHearts((h) => h - 1);
+        setMissed((m) => [...m, q.id]);
+        // Ask it again 3 questions later (no heart at stake), up to MAX_RETRIES per round.
+        if (retriesLeft > 0) {
+          setRetriesLeft((r) => r - 1);
+          setQuestions((qs) => {
+            const at = Math.min(i + 3, qs.length);
+            return [...qs.slice(0, at), { ...q, retry: true }, ...qs.slice(at)];
+          });
+        }
+      }
     }
-    setFeedback({ verdict, question: q, given, points });
+    setFeedback({ verdict, question: q, given, points, timedOut });
   }
+
+  // Boss: each question has its own countdown; running out counts as a miss.
+  useEffect(() => {
+    if (!level.timed || phase !== "play" || feedback || !q) return;
+    const t = setTimeout(() => {
+      if (secondsLeft <= 1) return answer("", "wrong", true);
+      setSecondsLeft(secondsLeft - 1);
+      if (secondsLeft <= 4) sfx.tick();
+    }, 1000);
+    return () => clearTimeout(t);
+  });
 
   function advance() {
     if (!feedback) return;
     setFeedback(null);
     if (hearts <= 0) return end(false);
     if (i + 1 >= questions.length) return end(true);
+    setSecondsLeft(secondsFor(questions[i + 1].kind));
     setI((n) => n + 1);
   }
 
@@ -132,7 +153,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
       topic: topic.id,
       level: level.id,
       correct,
-      total: i + 1,
+      total: answeredOriginals,
       hearts,
       finished,
       score,
@@ -140,7 +161,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
     })
       .then(setResult)
       .catch((e) => setSaveError((e as Error).message));
-  }, [phase, topic.id, level.id, correct, i, hearts, finished, score, missed]);
+  }, [phase, topic.id, level.id, correct, answeredOriginals, hearts, finished, score, missed]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -171,7 +192,8 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
                 ×{mult} serie da {streak}
               </motion.span>
             )}
-            {level.timed && <span className={secondsLeft <= 10 ? "text-[var(--danger)]" : ""}>⏱ {secondsLeft}s</span>}
+            {q?.retry && <span className="text-[var(--muted)]">Di nuovo · no heart at stake</span>}
+            {level.timed && <span className={secondsLeft <= 3 ? "text-[var(--danger)]" : ""}>⏱ {secondsLeft}s</span>}
           </div>
         )}
 
@@ -189,7 +211,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
               ))}
             </ul>
             <p className="text-sm text-[var(--muted)]">
-              {level.questionsPerRound} questions · {HEARTS} hearts{level.timed ? ` · ${BOSS_SECONDS} seconds` : ""}. Stars = hearts left at the end.
+              {level.questionsPerRound} questions · {HEARTS} hearts{level.timed ? " · a timer on each question" : ""}. Stars = hearts left at the end. Misses come back once for a second try.
             </p>
             <button className="btn btn-primary" onClick={start} autoFocus>
               Inizia
@@ -204,7 +226,15 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
                 <QuestionCard q={q} />
                 {q.kind === "choice" && <Choices q={q} locked={!!feedback} onAnswer={(o) => answer(o, o === q.answer ? "right" : "wrong")} />}
                 {q.kind === "type" && <Typed q={q} locked={!!feedback} onAnswer={(t) => answer(t, checkTyped(t, [q.answer, ...(q.accept ?? [])]))} />}
-                {q.kind === "tiles" && <Tiles q={q} locked={!!feedback} onAnswer={(words) => answer(words.join(" "), words.join(" ") === q.answer.join(" ") ? "right" : "wrong")} />}
+                {q.kind === "tiles" && (
+                  <Tiles
+                    q={q}
+                    locked={!!feedback}
+                    onAnswer={(words) =>
+                      answer(words.join(" "), [q.answer, ...(q.accept ?? [])].some((a) => a.join(" ") === words.join(" ")) ? "right" : "wrong")
+                    }
+                  />
+                )}
               </motion.div>
             </AnimatePresence>
           </motion.section>
@@ -216,7 +246,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
             finished={finished}
             score={score}
             correct={correct}
-            answered={i + 1}
+            answered={answeredOriginals}
             result={result}
             saveError={saveError}
             nextStop={next?.stop}
@@ -416,7 +446,7 @@ function FeedbackSheet({ f, onNext, last }: { f: Feedback; onNext: () => void; l
     >
       <div className="mx-auto flex max-w-[560px] flex-col gap-2">
         <p className="font-display text-2xl">
-          {ok ? (f.verdict === "accent" ? "Giusto, ma attenzione all'accento!" : "Giusto!") : "Non proprio…"}
+          {ok ? (f.verdict === "accent" ? "Giusto, ma attenzione all'accento!" : "Giusto!") : f.timedOut ? "Tempo scaduto!" : "Non proprio…"}
           {ok && f.points > 0 && <span className="ml-2 font-sans text-lg font-extrabold">+{f.points}</span>}
         </p>
         {(!ok || f.verdict === "accent") && (
@@ -507,6 +537,11 @@ function Results({
         {score} punti · {correct}/{answered} giuste
       </p>
       {!finished && <p className="text-[var(--muted)]">Out of hearts{timed ? " or time" : ""}. Every round makes it stick — try again.</p>}
+      {result && (
+        <p className="text-[var(--muted)]">
+          +{result.xp} punti per la sfida{result.mastered ? " · already mastered, replays count 25%" : ""}
+        </p>
+      )}
       {result?.newBest && <span className="stamp">Record!</span>}
       {result?.unlockedNext && nextStop && <p className="font-bold text-[var(--success)]">Hai sbloccato {nextStop}!</p>}
       {saveError && (

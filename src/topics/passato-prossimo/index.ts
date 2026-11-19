@@ -1,6 +1,6 @@
 import type { Question, Topic } from "../types";
 import { AVERE, ESSERE, REFLEXIVES, REFLEXIVE_PRONOUN, VERBS, agree, type Person, type Verb } from "./verbs";
-import { BOSS_EXTRAS, SENTENCES, TILES } from "./sentences";
+import { EITHER_AUX, PRONOUN_AGREEMENT, SENTENCES, TILES } from "./sentences";
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -13,19 +13,56 @@ const irr1 = VERBS.filter((v) => v.set === "irregolare-1");
 const irr2 = VERBS.filter((v) => v.set === "irregolare-2");
 const fixedAux = (vs: Verb[]) => vs.filter((v) => v.aux !== "entrambi");
 
-/** The "regular-looking" wrong participle learners actually produce. */
-function fakeRegular(inf: string) {
-  const stem = inf.slice(0, -3);
-  if (inf.endsWith("are")) return stem + "ato";
-  if (inf.endsWith("ere")) return stem + "uto";
-  return stem + "ito";
-}
+/** Other forms that are also correct Italian — never use them as wrong options; accept them when typed. */
+const VALID_ALT: Record<string, string[]> = { vedere: ["veduto"], perdere: ["perduto"] };
+
+/**
+ * Wrong options for irregular participles. Each list mixes the over-regularised form
+ * learners produce with a plausible-looking irregular, so the answer isn't simply
+ * "the one that doesn't look regular".
+ */
+const IRR_DISTRACTORS: Record<string, string[]> = {
+  aprire: ["aprito", "aperso"],
+  bere: ["beuto", "bevito"],
+  chiedere: ["chieduto", "chiuso"],
+  chiudere: ["chiuduto", "chiesto"],
+  dire: ["dito", "ditto"],
+  essere: ["essuto", "statuto"],
+  fare: ["faciuto", "fato"],
+  leggere: ["leggiuto", "lesso"],
+  mettere: ["mettuto", "misto"],
+  nascere: ["nasciuto", "nasto"],
+  perdere: ["perdito", "perto"],
+  prendere: ["prenduto", "presto"],
+  rimanere: ["rimanuto", "rimaso"],
+  scrivere: ["scrivuto", "scriso"],
+  vedere: ["vedito", "visso"],
+  venire: ["venito", "venso"],
+  accendere: ["accenduto", "accesto"],
+  decidere: ["deciduto", "decisto"],
+  dipingere: ["dipinguto", "dipinso"],
+  rispondere: ["risponduto", "risposo"],
+  rompere: ["romputo", "romposto"],
+  scegliere: ["sceglito", "scelso"],
+  spendere: ["spenduto", "spesto"],
+  spegnere: ["spegnuto", "spenso"],
+  togliere: ["toglito", "tolso"],
+  vincere: ["vinciuto", "vinso"],
+  offrire: ["offrito", "offerso"],
+  piangere: ["pianguto", "pianso"],
+  ridere: ["riduto", "risto"],
+  nascondere: ["nasconduto", "nascoso"],
+  morire: ["morito", "muorto"],
+  correre: ["corruto", "correso"],
+  vivere: ["vivuto", "visto"],
+  scendere: ["scenduto", "scesto"],
+};
 
 function endingRule(inf: string) {
   return inf.endsWith("are") ? "-are → -ato" : inf.endsWith("ere") ? "-ere → -uto" : "-ire → -ito";
 }
 
-type Subject = { text: string; person: Person; g: "m" | "f"; pl: boolean };
+type Subject = { text: string; person: Person; g: "m" | "f"; pl: boolean; mixed?: boolean };
 
 // Original names. io/tu/noi carry a hint so gender is never a guess.
 const SUBJECTS: Subject[] = [
@@ -35,7 +72,7 @@ const SUBJECTS: Subject[] = [
   { text: "La nonna", person: "lei", g: "f", pl: false },
   { text: "Luca e Paolo", person: "loro", g: "m", pl: true },
   { text: "Anna e Chiara", person: "loro", g: "f", pl: true },
-  { text: "Luca e Anna", person: "loro", g: "m", pl: true }, // mixed group → -i
+  { text: "Luca e Anna", person: "loro", g: "m", pl: true, mixed: true },
   { text: "Io (Sara)", person: "io", g: "f", pl: false },
   { text: "Io (Davide)", person: "io", g: "m", pl: false },
   { text: "Tu (Elena)", person: "tu", g: "f", pl: false },
@@ -50,8 +87,18 @@ const NO_OBJECT_OK = [
   "parlare", "mangiare", "lavorare", "studiare", "dormire", "viaggiare", "camminare", "telefonare",
   "giocare", "cucinare", "pagare", "capire", "ascoltare", "bere", "leggere", "scrivere",
 ];
+// Essere verbs that need a complement to be a sentence ("Marco è stato." ✗ → "Marco è stato a casa." ✓).
+const COMPLEMENT: Record<string, string> = { andare: "a casa", stare: "a casa", essere: "a Roma" };
+const NEEDS_NOUN = ["diventare"]; // "è diventata …" needs a noun — keep out of bare sentences
+// Avere verbs with no object: "what?" doesn't apply, so they get their own explanation.
+const INTRANSITIVE_AVERE = ["dormire", "lavorare", "camminare", "viaggiare", "telefonare", "abitare", "giocare", "parlare", "credere"];
+
 const fits = (s: Subject, v: Verb) =>
-  (s.text !== "Il treno" || TRAIN_VERBS.includes(v.inf)) && (v.aux !== "avere" || NO_OBJECT_OK.includes(v.inf));
+  (s.text !== "Il treno" || TRAIN_VERBS.includes(v.inf)) &&
+  (v.aux !== "avere" || NO_OBJECT_OK.includes(v.inf)) &&
+  !NEEDS_NOUN.includes(v.inf);
+
+const rest = (v: Verb) => (COMPLEMENT[v.inf] ? ` ${COMPLEMENT[v.inf]}` : "");
 
 function perfect(s: Subject, v: Verb) {
   const essere = v.aux === "essere";
@@ -60,18 +107,30 @@ function perfect(s: Subject, v: Verb) {
   return { aux, pp, essere };
 }
 
-// ── level 1: regular participles ─────────────────────────────────────
+/** Pick n questions with an even split by answer (e.g. 6 avere + 6 essere). */
+function balancedByAnswer(pool: Question[], n: number) {
+  const groups = new Map<string, Question[]>();
+  for (const q of shuffle(pool)) {
+    const key = q.kind === "tiles" ? "" : q.answer;
+    groups.set(key, [...(groups.get(key) ?? []), q]);
+  }
+  const lists = [...groups.values()];
+  const per = Math.ceil(n / lists.length);
+  return shuffle(lists.flatMap((l) => l.slice(0, per))).slice(0, n);
+}
+
+// ── participles (levels 1, 5, 6) ─────────────────────────────────────
 
 function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): Question[] {
   return vs.flatMap((v) => {
-    const wrong = fakeRegular(v.inf);
-    const options = uniq(
-      irregular
-        ? [v.pp, wrong, v.inf.slice(0, -3) + (v.inf.endsWith("ere") ? "ito" : "uto")]
-        : [v.pp, v.inf.slice(0, -3) + "ato", v.inf.slice(0, -3) + "uto", v.inf.slice(0, -3) + "ito"],
-    );
+    const stem = v.inf.slice(0, -3);
+    const wrong = irregular
+      ? IRR_DISTRACTORS[v.inf] ?? [stem + "uto", stem + "ito"]
+      : [stem + "ato", stem + "uto", stem + "ito"];
+    const valid = [v.pp, ...(VALID_ALT[v.inf] ?? [])];
+    const distractors = shuffle(uniq(wrong).filter((o) => !valid.includes(o))).slice(0, 2);
     const explain = irregular
-      ? `${v.inf} → ${v.pp}. Irregular: learn it by heart.`
+      ? `${v.inf} → ${v.pp}. Irregular: learn it by heart.${VALID_ALT[v.inf] ? ` (${VALID_ALT[v.inf].join(", ")} also exists, but ${v.pp} is more common.)` : ""}`
       : `${v.inf} → ${v.pp} (${endingRule(v.inf)}).`;
     return [
       {
@@ -81,6 +140,7 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
         prompt: `${v.inf} → ___`,
         hint: v.en,
         answer: v.pp,
+        accept: VALID_ALT[v.inf],
         explain,
       },
       {
@@ -89,7 +149,7 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
         id: `${idPrefix}-choice-${v.inf}`,
         prompt: v.inf,
         hint: v.en,
-        options: shuffle([v.pp, ...shuffle(options.filter((o) => o !== v.pp)).slice(0, 2)]),
+        options: shuffle([v.pp, ...distractors]),
         answer: v.pp,
         explain,
       },
@@ -98,6 +158,14 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
 }
 
 // ── level 2: avere or essere ─────────────────────────────────────────
+
+function auxExplain(v: Verb) {
+  if (v.aux === "essere") return `${v.inf} takes essere: movement to a place, change, or being/staying.`;
+  if (["camminare", "viaggiare"].includes(v.inf))
+    return `${v.inf} takes avere: movement with no destination → avere (ho camminato, ho viaggiato).`;
+  if (INTRANSITIVE_AVERE.includes(v.inf)) return `${v.inf} takes avere — most verbs do, even without an object.`;
+  return `${v.inf} takes avere: you can ask "what?" — ho ${v.pp} (che cosa?).`;
+}
 
 function auxQuestions(): Question[] {
   return fixedAux([...regulars, ...irr1]).map((v) => ({
@@ -108,10 +176,7 @@ function auxQuestions(): Question[] {
     hint: v.en,
     options: ["avere", "essere"],
     answer: v.aux,
-    explain:
-      v.aux === "essere"
-        ? `${v.inf} takes essere: movement, change, or being/staying.`
-        : `${v.inf} takes avere, like most verbs. Ask "what?": ho ${v.pp} (che cosa?).`,
+    explain: auxExplain(v),
   }));
 }
 
@@ -124,23 +189,44 @@ function auxFormQuestions(): Question[] {
     if (candidates.length === 0) continue; // e.g. "portare" needs an object
     const s = pick(candidates);
     const { aux, pp, essere } = perfect(s, v);
+    const why = `${s.person} → ${aux}. ${v.inf} takes ${essere ? "essere" : "avere"}.`;
+
+    // Production: write auxiliary + participle — both decisions at once.
+    out.push({
+      kind: "type",
+      task: "Write the verb in the passato prossimo (auxiliary + participle)",
+      id: `auxform-type-${v.inf}`,
+      prompt: `${s.text} ___${rest(v)}. (${v.inf})`,
+      hint: v.en,
+      answer: `${aux} ${pp}`,
+      explain: `${why} ${essere ? `It agrees: ${pp}.` : ""}`.trim(),
+    });
+
+    // Recognition: the participle ending is hidden, so it can't give the auxiliary away.
     const other = (essere ? AVERE : ESSERE)[s.person];
     const sameAuxWrong = Object.values(essere ? ESSERE : AVERE).filter((f) => f !== aux);
     out.push({
       kind: "choice",
       task: "Pick the right form of avere or essere",
-      id: `auxform-${v.inf}-${s.person}-${s.g}`,
-      prompt: `${s.text} ___ ${pp}.`,
+      id: `auxform-${v.inf}`,
+      prompt: `${s.text} ___ ${v.pp.slice(0, -1)}_${rest(v)}.`,
       hint: `${v.inf}: ${v.en}`,
       options: shuffle(uniq([aux, other, ...shuffle(sameAuxWrong).slice(0, 2)])).slice(0, 4),
       answer: aux,
-      explain: `${s.person} → ${aux}. ${v.inf} takes ${essere ? "essere" : "avere"}.`,
+      explain: why,
     });
   }
   return out;
 }
 
 // ── level 4: agreement ───────────────────────────────────────────────
+
+function agreementExplain(s: Subject, essere: boolean) {
+  if (!essere) return "With avere the participle stays -o.";
+  if (s.mixed) return "Essere agrees with the subject. A mixed group takes -i.";
+  if (s.pl) return s.g === "m" ? "Essere agrees: plural male (or mixed) → -i." : "Essere agrees: plural female → -e.";
+  return s.g === "m" ? "Essere agrees: singular male → -o." : "Essere agrees: singular female → -a.";
+}
 
 function agreementQuestions(): Question[] {
   const out: Question[] = [];
@@ -149,24 +235,17 @@ function agreementQuestions(): Question[] {
     // 3 essere verbs + 1 avere verb per subject: with avere it stays -o.
     const ess = shuffle(verbs.filter((v) => v.aux === "essere" && fits(s, v))).slice(0, 3);
     const av = shuffle(verbs.filter((v) => v.aux === "avere" && v.inf !== "avere" && fits(s, v))).slice(0, 1);
-    for (const v of [...ess, ...av]) {
+    [...ess, ...av].forEach((v, k) => {
       const { aux, pp, essere } = perfect(s, v);
       const forms = [agree(v.pp, "m", false), agree(v.pp, "f", false), agree(v.pp, "m", true), agree(v.pp, "f", true)];
-      out.push({
-        kind: "choice",
-        task: "Pick the right ending",
-        id: `agree-${v.inf}-${s.text}`,
-        prompt: `${s.text} ${aux} ___.`,
-        hint: `${v.inf}: ${v.en}`,
-        options: forms,
-        answer: pp,
-        explain: essere
-          ? s.g === "m" && s.pl && s.text.includes(" e ")
-            ? `Essere agrees with the subject. A mixed group takes -i.`
-            : `Essere agrees with the subject: -o, -a, -i, -e.`
-          : `With avere the participle stays -o.`,
-      });
-    }
+      const base = { id: `agree-${v.inf}-${s.text}`, hint: `${v.inf}: ${v.en}`, explain: agreementExplain(s, essere) };
+      // About 1 in 4 is typed, so the ending has to be produced, not just spotted.
+      out.push(
+        k === 0
+          ? { ...base, kind: "type", task: "Write the participle with the right ending", prompt: `${s.text} ${aux} ___${rest(v)}. (${v.inf})`, answer: pp }
+          : { ...base, kind: "choice", task: "Pick the right ending", prompt: `${s.text} ${aux} ___${rest(v)}.`, options: forms, answer: pp },
+      );
+    });
   }
   return out;
 }
@@ -235,7 +314,7 @@ export const passatoProssimo: Topic = {
       title: "Participi regolari",
       gloss: "Regular past participles",
       intro: ["-are → -ato: parlare → parlato", "-ere → -uto: credere → creduto", "-ire → -ito: dormire → dormito"],
-      questionsPerRound: 10,
+      questionsPerRound: 8,
       build: () => participleQuestions(regulars, "reg", false),
     },
     {
@@ -244,19 +323,20 @@ export const passatoProssimo: Topic = {
       title: "Avere o essere?",
       gloss: "Pick the auxiliary",
       intro: [
-        "Most verbs take avere: ho mangiato.",
-        "Movement, change and staying take essere: sono andato.",
-        "Quick test: can you ask \"what?\" → avere.",
+        "Most verbs take avere: ho mangiato, ho dormito.",
+        "Going to a place, change and staying take essere: sono andato.",
+        "But walking or travelling with no destination → avere: ho camminato.",
       ],
       questionsPerRound: 12,
       build: auxQuestions,
+      pick: balancedByAnswer, // 6 avere + 6 essere, so "always avere" can't win
     },
     {
       id: "pp-3-ausiliare",
       stop: "Venezia",
       title: "Ho, hai, ha… sono, sei, è…",
       gloss: "The auxiliary for each person",
-      intro: ["avere: ho, hai, ha, abbiamo, avete, hanno", "essere: sono, sei, è, siamo, siete, sono"],
+      intro: ["avere: ho, hai, ha, abbiamo, avete, hanno", "essere: sono, sei, è, siamo, siete, sono", "Some questions ask you to write both words."],
       questionsPerRound: 10,
       build: auxFormQuestions,
     },
@@ -267,7 +347,7 @@ export const passatoProssimo: Topic = {
       gloss: "Agreement with essere",
       intro: [
         "With essere the participle agrees: Giulia è andata.",
-        "Plural: -i (or mixed group), -e (all female).",
+        "Plural: -i (all male or mixed), -e (all female).",
         "With avere it stays -o: Giulia ha mangiato.",
       ],
       questionsPerRound: 10,
@@ -287,7 +367,7 @@ export const passatoProssimo: Topic = {
       stop: "Siena",
       title: "Participi irregolari II",
       gloss: "More irregulars",
-      intro: ["Patterns help: -so / -sto (preso, chiesto), -tto (rotto), -to (scelto, vinto)."],
+      intro: ["Patterns help: -so (acceso, deciso, speso), -sto (risposto, nascosto)", "-tto (rotto), -nto (dipinto, spento, vinto, pianto)."],
       questionsPerRound: 10,
       build: () => participleQuestions(irr2, "irr2", true),
     },
@@ -314,20 +394,38 @@ export const passatoProssimo: Topic = {
       build: () => [...SENTENCES, ...TILES],
     },
     {
+      id: "pp-8b-due-ausiliari",
+      stop: "Bari",
+      title: "Ho finito… è finita",
+      gloss: "Either auxiliary · lo, la, li, le",
+      intro: [
+        "Some verbs take both: with an object → avere (ho finito il lavoro).",
+        "No object → essere (la lezione è finita).",
+        "Bonus: l'ho vista — lo, la, li, le make avere agree.",
+      ],
+      questionsPerRound: 8,
+      build: () => [...EITHER_AUX, ...PRONOUN_AGREEMENT],
+      // Mostly either-auxiliary verbs; at most 2 of the A2 pronoun bonus.
+      pick: (pool, n) => {
+        const pron = shuffle(pool.filter((q) => q.id.startsWith("pron-"))).slice(0, 2);
+        return shuffle([...pron, ...shuffle(pool.filter((q) => !q.id.startsWith("pron-"))).slice(0, n - pron.length)]);
+      },
+    },
+    {
       id: "pp-9-boss",
       stop: "Palermo",
       title: "La sfida finale",
       gloss: "Everything, against the clock",
-      intro: ["A bit of everything, plus two new twists:", "finire / passare can take either auxiliary.", "L'ho vista: lo, la, li, le make avere agree."],
+      intro: ["Everything you've practised, nothing new.", "Each question has its own timer: run out and you lose a heart."],
       questionsPerRound: 15,
       timed: true,
       build: () => [
-        ...shuffle(auxQuestions()).slice(0, 6),
+        ...balancedByAnswer(auxQuestions(), 6),
         ...shuffle(agreementQuestions()).slice(0, 6),
         ...shuffle(participleQuestions([...irr1, ...irr2], "boss", true)).slice(0, 8),
         ...shuffle(reflexiveQuestions()).slice(0, 6),
+        ...shuffle(EITHER_AUX).slice(0, 4),
         ...SENTENCES,
-        ...BOSS_EXTRAS,
       ],
     },
   ],

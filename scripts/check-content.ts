@@ -23,7 +23,7 @@ for (const level of passatoProssimo.levels) {
   if (pool.length < level.questionsPerRound) fail(`pool smaller than a round (${level.questionsPerRound})`);
   const ids = new Set<string>();
   for (const q of pool) {
-    if (ids.has(q.id) && level.id !== "pp-9-boss") fail(`duplicate id ${q.id}`);
+    if (ids.has(q.id) && !["pp-9-boss"].includes(level.id)) fail(`duplicate id ${q.id}`);
     ids.add(q.id);
     if (q.kind === "choice") {
       if (!q.options.includes(q.answer)) fail(`answer not in options: ${q.id}`);
@@ -34,6 +34,18 @@ for (const level of passatoProssimo.levels) {
     if ((q.kind === "choice" || q.kind === "type") && !q.prompt.includes("___") && !q.id.startsWith("aux-") && !q.id.includes("-choice-"))
       fail(`no gap in prompt: ${q.id}`);
     if (!q.explain) fail(`missing explanation: ${q.id}`);
+    if (!q.task) fail(`missing task: ${q.id}`);
+    if (q.kind === "choice" && /\b(veduto|perduto)\b/.test(q.options.join(" ")) && q.answer !== "veduto" && q.answer !== "perduto")
+      fail(`valid alternative used as a wrong option: ${q.id}`);
+    if (q.kind !== "tiles" && /\b(\w+) (è|sono|sei|siamo|siete) (stat[oaie]|diventat[oaie])\.$/.test(q.prompt.replace("___", "X")))
+      fail(`bare essere sentence needs a complement: ${q.id}`);
+  }
+
+  const round = level.pick ? level.pick(pool, level.questionsPerRound) : pool.slice(0, level.questionsPerRound);
+  if (round.length !== level.questionsPerRound) fail(`sampler returned ${round.length}, expected ${level.questionsPerRound}`);
+  if (level.id === "pp-2-avere-o-essere") {
+    const ess = round.filter((q) => q.kind === "choice" && q.answer === "essere").length;
+    if (ess !== level.questionsPerRound / 2) fail(`avere/essere round not balanced: ${ess} essere`);
   }
 
   const sample = showAll ? pool : [...pool].sort(() => Math.random() - 0.5).slice(0, 6);

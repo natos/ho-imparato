@@ -32,6 +32,7 @@ export type Question = Base & (
       prompt: string; // English meaning
       tiles: string[]; // shuffled by the engine; may include distractors
       answer: string[]; // correct order
+      accept?: string[][]; // other correct orders
       explain: string;
     });
 
@@ -42,8 +43,10 @@ export type Level = {
   gloss: string; // the rule, in English
   intro: string[]; // 2–4 short lines shown before the first round
   questionsPerRound: number;
-  timed?: boolean; // boss level
+  timed?: boolean; // boss: each question gets its own countdown
   build: () => Question[]; // full pool; the engine samples a round from it
+  /** Optional custom sampler, e.g. to balance avere/essere. Defaults to a random slice. */
+  pick?: (pool: Question[], n: number) => Question[];
 };
 
 export type Topic = {

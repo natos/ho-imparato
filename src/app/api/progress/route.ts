@@ -53,14 +53,17 @@ export async function POST(req: Request) {
       },
     });
 
-  // Points count every round you finish, so practice pays off on the scoreboard.
+  // Points reward learning, not grinding: a stop you've already mastered (3 stars) pays 25%,
+  // and failing a mastered stop pays nothing. Failing a new stop still pays half.
+  const mastered = prevStars === 3;
+  const xp = finished ? Math.round(score * (mastered ? 0.25 : 1)) : mastered ? 0 : Math.floor(score / 2);
   await db.insert(schema.plays).values({
     id: crypto.randomUUID(),
     userId: user.id,
     topic: topic.id,
     level: level.id,
     score,
-    xp: finished ? score : Math.floor(score / 2),
+    xp,
   });
 
   // Missed questions go into the review deck, due now.
@@ -75,6 +78,8 @@ export async function POST(req: Request) {
   }
 
   return json({
+    xp,
+    mastered,
     stars: Math.max(stars, prevStars),
     best: Math.max(score, prev?.bestScore ?? 0),
     newBest,

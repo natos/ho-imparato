@@ -141,10 +141,11 @@ export const REFLEXIVES: Reflexive[] = [
   { inf: "prepararsi", pp: "preparato", en: "to get ready", rest: "per la cena" },
   { inf: "fermarsi", pp: "fermato", en: "to stop", rest: "a Siena" },
   { inf: "sposarsi", pp: "sposato", en: "to get married", rest: "nel 2015" },
-  { inf: "trovarsi", pp: "trovato", en: "to get on / find oneself", rest: "bene a Roma" },
-  { inf: "sedersi", pp: "seduto", en: "to sit down", rest: "al tavolo" },
-  { inf: "mettersi", pp: "messo", en: "to put on (clothes)", rest: "il cappello" },
-  { inf: "farsi", pp: "fatto", en: "to have (a shower)", rest: "la doccia" },
+  { inf: "trovarsi", pp: "trovato", en: "to like it / feel at home (trovarsi bene)", rest: "bene a Roma" },
+  { inf: "sedersi", pp: "seduto", en: "to sit down", rest: "a tavola" },
+  // No reflexives with a direct object (mettersi il cappello): there the participle may agree with the object — A2.
+  { inf: "pettinarsi", pp: "pettinato", en: "to comb one's hair", rest: "davanti allo specchio" },
+  { inf: "truccarsi", pp: "truccato", en: "to put on make-up", rest: "per la festa" },
 ];
 
 export const REFLEXIVE_PRONOUN: Record<Person, string> = {
