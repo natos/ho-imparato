@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb, schema } from "@/db";
 
 export type Player = {
@@ -7,11 +7,12 @@ export type Player = {
   name: string;
   avatarUrl: string | null;
   stars: number;
+  points: number;
   /** index of the stop this player is at on the current route (0-based) */
   stop: number;
 };
 
-/** Everyone's position and stars on a topic route — the duel/leaderboard source. */
+/** Everyone's position, stars and points on a topic route — the duel source. */
 export async function getBoard(topic: string): Promise<Player[]> {
   const db = await getDb();
   const rows = await db
@@ -19,23 +20,21 @@ export async function getBoard(topic: string): Promise<Player[]> {
       id: schema.users.id,
       name: schema.users.name,
       avatarUrl: schema.users.avatarUrl,
-      stars: sql<number>`coalesce(sum(${schema.progress.stars}), 0)`.mapWith(Number),
-      cleared: sql<number>`count(${schema.progress.level}) filter (where ${schema.progress.stars} > 0)`.mapWith(Number),
+      stars: sql<number>`coalesce((select sum(p.stars) from progress p where p.user_id = ${schema.users.id} and p.topic = ${topic}), 0)`.mapWith(Number),
+      cleared: sql<number>`coalesce((select count(*) from progress p where p.user_id = ${schema.users.id} and p.topic = ${topic} and p.stars > 0), 0)`.mapWith(Number),
+      points: sql<number>`coalesce((select sum(x.xp) from plays x where x.user_id = ${schema.users.id} and x.topic = ${topic}), 0)`.mapWith(Number),
     })
     .from(schema.users)
-    .leftJoin(
-      schema.progress,
-      sql`${schema.progress.userId} = ${schema.users.id} and ${schema.progress.topic} = ${topic}`,
-    )
-    .groupBy(schema.users.id)
-    .orderBy(sql`2 desc`, schema.users.createdAt);
-  return rows.map((r) => ({ id: r.id, name: r.name, avatarUrl: r.avatarUrl, stars: r.stars, stop: r.cleared }));
+    .orderBy(schema.users.createdAt);
+  return rows.map((r) => ({ id: r.id, name: r.name, avatarUrl: r.avatarUrl, stars: r.stars, points: r.points, stop: r.cleared }));
 }
 
-export async function getMyStars(userId: string, topic: string) {
+/** level id → best stars for one player on one topic. */
+export async function getMyStars(userId: string, topic: string): Promise<Record<string, number>> {
   const db = await getDb();
-  return db
+  const rows = await db
     .select({ level: schema.progress.level, stars: schema.progress.stars })
     .from(schema.progress)
-    .where(sql`${eq(schema.progress.userId, userId)} and ${eq(schema.progress.topic, topic)}`);
+    .where(and(eq(schema.progress.userId, userId), eq(schema.progress.topic, topic)));
+  return Object.fromEntries(rows.map((r) => [r.level, r.stars]));
 }

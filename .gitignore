@@ -39,3 +39,6 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+
+# generated review of the content pack (npm run content:review)
+/CONTENT-REVIEW.md

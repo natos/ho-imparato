@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth";
-import { getBoard } from "@/lib/board";
+import { getBoard, getMyStars } from "@/lib/board";
+import { DEFAULT_TOPIC } from "@/topics";
 import { Welcome } from "@/components/Welcome";
 import { Home } from "@/components/Home";
 
@@ -15,8 +16,8 @@ export default function Page() {
 async function Gate() {
   const user = await getCurrentUser();
   if (!user) return <Welcome inviteRequired={Boolean(process.env.INVITE_CODE)} />;
-  const players = await getBoard("passato-prossimo");
-  return <Home user={user} players={players} inviteCode={process.env.INVITE_CODE ?? null} />;
+  const [players, myStars] = await Promise.all([getBoard(DEFAULT_TOPIC), getMyStars(user.id, DEFAULT_TOPIC)]);
+  return <Home user={user} players={players} myStars={myStars} topicId={DEFAULT_TOPIC} inviteCode={process.env.INVITE_CODE ?? null} />;
 }
 
 function Splash() {

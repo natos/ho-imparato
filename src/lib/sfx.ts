@@ -69,9 +69,30 @@ export const sfx = {
   pop() {
     tone(880, 0, 0.08, "sine", 0.12);
   },
+  /** short tick — timer running low */
+  tick() {
+    tone(1200, 0, 0.04, "square", 0.05);
+  },
   /** low buzz — error */
   nope() {
     tone(160, 0, 0.18, "square", 0.08);
     tone(120, 0.1, 0.22, "square", 0.08);
   },
 };
+
+/** Say Italian out loud (browser TTS). Silent when sound is off or unsupported. */
+export function speak(text: string) {
+  if (typeof window === "undefined" || isMuted() || !("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "it-IT";
+  const it = speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith("it"));
+  if (it) u.voice = it;
+  u.rate = 0.95;
+  speechSynthesis.cancel();
+  speechSynthesis.speak(u);
+}
+
+/** Three ascending notes — a star landing. */
+export function starSound(n: number) {
+  tone([659.25, 783.99, 1046.5][n] ?? 1046.5, 0, 0.3, "triangle", 0.2);
+}

@@ -9,7 +9,9 @@
     "lint": "eslint",
     "test:auth": "node scripts/e2e-auth.mjs",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "content:check": "tsx scripts/check-content.ts",
+    "content:review": "tsx scripts/content-review.ts"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.17",

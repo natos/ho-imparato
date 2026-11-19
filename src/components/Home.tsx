@@ -5,6 +5,8 @@ import Link from "next/link";
 import type { CurrentUser } from "@/lib/auth";
 import type { Player } from "@/lib/board";
 import { sfx } from "@/lib/sfx";
+import { isUnlocked } from "@/lib/unlock";
+import { TOPICS } from "@/topics";
 import { Avatar } from "./Avatar";
 import { Wordmark } from "./Wordmark";
 
@@ -13,14 +15,26 @@ import { Wordmark } from "./Wordmark";
   English only as a secondary gloss for anything instructional.
 */
 
-// The Passato Prossimo route. Stops become playable once the lesson content is in.
-const ROUTE = ["Torino", "Milano", "Venezia", "Bologna", "Firenze", "Roma", "Napoli", "Palermo"];
-const LEVELS_READY = 0; // set by the topic pack in the Content phase
-
-export function Home({ user, players, inviteCode }: { user: CurrentUser; players: Player[]; inviteCode: string | null }) {
-  const me = players.find((p) => p.id === user.id) ?? { ...user, stars: 0, stop: 0 };
+export function Home({
+  user,
+  players,
+  myStars,
+  topicId,
+  inviteCode,
+}: {
+  user: CurrentUser;
+  players: Player[];
+  myStars: Record<string, number>;
+  topicId: string;
+  inviteCode: string | null;
+}) {
+  const topic = TOPICS[topicId];
+  const levels = topic.levels;
+  const me = players.find((p) => p.id === user.id) ?? { ...user, stars: 0, points: 0, stop: 0 };
   const rivals = players.filter((p) => p.id !== user.id);
-  const current = Math.min(me.stop, ROUTE.length - 1);
+  // Your stop = the first level you haven't cleared yet (or the last one).
+  const firstUncleared = levels.findIndex((l) => !(myStars[l.id] > 0));
+  const current = firstUncleared === -1 ? levels.length - 1 : firstUncleared;
 
   return (
     <>
@@ -40,20 +54,24 @@ export function Home({ user, players, inviteCode }: { user: CurrentUser; players
           <h2 id="route-title" className="font-display text-2xl">
             Passato prossimo
           </h2>
-          <p className="text-[var(--muted)]">Da Torino a Palermo — each stop teaches one rule.</p>
+          <p className="text-[var(--muted)]">
+            Da {levels[0].stop} a {levels[levels.length - 1].stop}. Each stop teaches one rule.
+          </p>
 
           <ol className="mt-4 flex flex-col">
-            {ROUTE.map((city, i) => {
-              const done = i < current;
-              const here = i === current;
-              const locked = i > current;
+            {levels.map((level, i) => {
+              const city = level.stop;
+              const stars = myStars[level.id] ?? 0;
+              const done = stars > 0;
+              const locked = !isUnlocked(topic, i, myStars);
+              const here = i === current && !locked;
               // You render last, so your token sits on top.
               const tokens = players
-                .filter((p) => Math.min(p.stop, ROUTE.length - 1) === i)
+                .filter((p) => Math.min(p.stop, levels.length - 1) === i)
                 .sort((a, b) => Number(a.id === user.id) - Number(b.id === user.id));
               return (
                 <li key={city} className="relative flex min-h-16 items-center gap-4">
-                  {i < ROUTE.length - 1 && (
+                  {i < levels.length - 1 && (
                     <span
                       aria-hidden
                       className={`absolute left-[21px] top-[46px] h-[calc(100%-26px)] border-l-[4px] ${
@@ -72,17 +90,26 @@ export function Home({ user, players, inviteCode }: { user: CurrentUser; players
                   >
                     {locked ? <Lock /> : i + 1}
                   </span>
-                  <div className="flex min-w-0 flex-col">
-                    <span className={`text-lg font-bold ${locked ? "text-[var(--locked)]" : ""}`}>
+                  <Link
+                    href={locked ? "#" : `/play/${topic.id}/${level.id}`}
+                    aria-disabled={locked}
+                    tabIndex={locked ? -1 : undefined}
+                    onClick={(e) => locked && e.preventDefault()}
+                    className={`flex min-w-0 flex-col py-1 ${locked ? "pointer-events-none" : ""}`}
+                  >
+                    <span className={`text-lg font-bold leading-tight ${locked ? "text-[var(--locked)]" : ""}`}>
                       {city}
                       {locked && <span className="sr-only">, bloccata (locked)</span>}
                     </span>
+                    <span className={`truncate text-sm ${locked ? "text-[var(--locked)]" : "text-[var(--muted)]"}`}>{level.gloss}</span>
                     {!locked && (
-                      <span className="flex gap-0.5" aria-label="0 stelle su 3">
-                        <Star /> <Star /> <Star />
+                      <span className="flex gap-0.5" aria-label={`${stars} stelle su 3`}>
+                        {[0, 1, 2].map((k) => (
+                          <Star key={k} filled={k < stars} />
+                        ))}
                       </span>
                     )}
-                  </div>
+                  </Link>
                   <div className="ml-auto flex items-center gap-3">
                     {tokens.length > 0 && (
                       <span className="flex -space-x-3">
@@ -105,12 +132,11 @@ export function Home({ user, players, inviteCode }: { user: CurrentUser; players
                         )}
                       </span>
                     )}
-                    {here &&
-                      (i < LEVELS_READY ? (
-                        <button className="btn btn-primary !w-auto !px-5 !py-2">Gioca</button>
-                      ) : (
-                        <span className="stamp">In arrivo</span>
-                      ))}
+                    {here && (
+                      <Link href={`/play/${topic.id}/${level.id}`} className="btn btn-primary !w-auto !px-5 !py-2" onClick={() => sfx.pop()}>
+                        Gioca
+                      </Link>
+                    )}
                   </div>
                 </li>
               );
@@ -127,14 +153,16 @@ function Duel({
   rivals,
   inviteCode,
 }: {
-  me: Player | (CurrentUser & { stars: number });
+  me: Player | (CurrentUser & { stars: number; points: number });
   rivals: Player[];
   inviteCode: string | null;
 }) {
   if (rivals.length === 0) return <Invite inviteCode={inviteCode} />;
 
   const all = [me, ...rivals].sort((a, b) => b.stars - a.stars);
-  const tied = all[0].stars === all[1].stars;
+  // Stars decide who's ahead; points break a tie.
+  all.sort((a, b) => b.stars - a.stars || b.points - a.points);
+  const tied = all[0].stars === all[1].stars && all[0].points === all[1].points;
   const verdict = tied ? "Pari!" : all[0].id === me.id ? "Sei avanti tu!" : `${all[0].name} è avanti`;
 
   const seat = (p: typeof me) => (
@@ -146,6 +174,7 @@ function Duel({
       <span className="flex items-center gap-0.5 font-extrabold">
         <Star filled /> {p.stars}
       </span>
+      <span className="text-xs font-bold text-[var(--muted)]">{"points" in p ? p.points : 0} pt</span>
     </li>
   );
 
