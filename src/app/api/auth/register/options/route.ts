@@ -9,6 +9,9 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}));
   const name = cleanName(body.name);
   if (!name) return fail("Use a name between 2 and 24 characters.");
+  if (process.env.NODE_ENV === "production" && !process.env.INVITE_CODE) {
+    return fail("Sign-up isn't open yet. Ask whoever runs this game to set an invite code.", 403);
+  }
   if (!checkInvite(body.invite)) return fail("That invite code doesn't match. Check it and try again.", 403);
 
   const db = await getDb();
