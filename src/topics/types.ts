@@ -3,8 +3,12 @@
  * generators; the game engine knows nothing about Italian grammar.
  */
 
-/** What the player has to do, in one plain sentence. Shown above every prompt. */
-type Base = { task: string };
+/**
+ * task: what the player has to do, in one plain sentence. Shown above every prompt.
+ * skill: stable key for the thing being practised (e.g. "pp:fare", "aux:andare"),
+ *        so Ripasso can ask it again in a fresh form. Defaults to the question id.
+ */
+type Base = { task: string; skill?: string; level?: string | null /* source level, set on Ripasso/weekly questions */ };
 
 /** One question as the engine sees it. */
 export type Question = Base & (

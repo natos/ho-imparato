@@ -21,12 +21,16 @@ export function Home({
   myStars,
   topicId,
   inviteCode,
+  review,
+  weekly,
 }: {
   user: CurrentUser;
   players: Player[];
   myStars: Record<string, number>;
   topicId: string;
   inviteCode: string | null;
+  review: { due: number; remembered: number };
+  weekly: { played: boolean; xp: number; resetsAt: string };
 }) {
   const topic = TOPICS[topicId];
   const levels = topic.levels;
@@ -49,6 +53,8 @@ export function Home({
         <h1 className="font-display text-4xl">Ciao, {user.name}!</h1>
 
         <Duel me={me} rivals={rivals} inviteCode={inviteCode} />
+
+        <Today review={review} weekly={weekly} anyCleared={Object.values(myStars).some((n) => n > 0)} />
 
         <section aria-labelledby="route-title" className="ticket p-5">
           <h2 id="route-title" className="font-display text-2xl">
@@ -194,6 +200,50 @@ function Duel({
         <ul className="ml-auto flex flex-wrap justify-end gap-3">{all.map(seat)}</ul>
       )}
     </section>
+  );
+}
+
+function daysUntil(iso: string) {
+  const d = Math.ceil((new Date(iso).getTime() - Date.now()) / 86400000);
+  return d <= 1 ? "domani" : `tra ${d} giorni`;
+}
+
+/** Today's extras: the Ripasso deck and the weekly challenge. */
+function Today({
+  review,
+  weekly,
+  anyCleared,
+}: {
+  review: { due: number; remembered: number };
+  weekly: { played: boolean; xp: number; resetsAt: string };
+  anyCleared: boolean;
+}) {
+  if (!anyCleared && review.due === 0) return null; // nothing to review before the first stop
+  const urgent = review.due >= 5;
+  return (
+    <div className="grid grid-cols-2 gap-3">
+      <Link
+        href="/ripasso"
+        className={`ticket flex flex-col gap-1 p-4 ${urgent ? "!bg-[var(--brand)] !text-[var(--brand-fg)]" : ""}`}
+        aria-label={`Ripasso: ${review.due} da ripassare`}
+      >
+        <span className="font-display text-xl">Ripasso</span>
+        <span className="text-3xl font-extrabold leading-none">{review.due}</span>
+        <span className={`text-sm ${urgent ? "" : "text-[var(--muted)]"}`}>
+          {review.due === 0 ? "all done for now" : "to review"}
+          {review.remembered > 0 && ` · ${review.remembered} ricordati`}
+        </span>
+      </Link>
+      <Link href="/sfida" className="ticket flex flex-col gap-1 p-4" aria-label="La sfida della settimana">
+        <span className="font-display text-xl leading-tight">Sfida della settimana</span>
+        {weekly.played ? (
+          <span className="text-sm font-bold text-[var(--success)]">Fatta! +{weekly.xp} punti</span>
+        ) : (
+          <span className="stamp self-start !text-xs">×2 punti</span>
+        )}
+        <span className="text-sm text-[var(--muted)]">New one {daysUntil(weekly.resetsAt)}</span>
+      </Link>
+    </div>
   );
 }
 

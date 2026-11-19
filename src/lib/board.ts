@@ -12,7 +12,11 @@ export type Player = {
   stop: number;
 };
 
-/** Everyone's position, stars and points on a topic route — the duel source. */
+/**
+ * Everyone's position, stars and points on a topic route — the duel source.
+ * Note: subqueries reference "users"."id" explicitly; an interpolated column renders as bare "id",
+ * which inside `from plays` silently means plays.id.
+ */
 export async function getBoard(topic: string): Promise<Player[]> {
   const db = await getDb();
   const rows = await db
@@ -20,9 +24,9 @@ export async function getBoard(topic: string): Promise<Player[]> {
       id: schema.users.id,
       name: schema.users.name,
       avatarUrl: schema.users.avatarUrl,
-      stars: sql<number>`coalesce((select sum(p.stars) from progress p where p.user_id = ${schema.users.id} and p.topic = ${topic}), 0)`.mapWith(Number),
-      cleared: sql<number>`coalesce((select count(*) from progress p where p.user_id = ${schema.users.id} and p.topic = ${topic} and p.stars > 0), 0)`.mapWith(Number),
-      points: sql<number>`coalesce((select sum(x.xp) from plays x where x.user_id = ${schema.users.id} and x.topic = ${topic}), 0)`.mapWith(Number),
+      stars: sql<number>`coalesce((select sum(p.stars) from progress p where p.user_id = "users"."id" and p.topic = ${topic}), 0)`.mapWith(Number),
+      cleared: sql<number>`coalesce((select count(*) from progress p where p.user_id = "users"."id" and p.topic = ${topic} and p.stars > 0), 0)`.mapWith(Number),
+      points: sql<number>`coalesce((select sum(x.xp) from plays x where x.user_id = "users"."id" and x.topic = ${topic}), 0)`.mapWith(Number),
     })
     .from(schema.users)
     .orderBy(schema.users.createdAt);

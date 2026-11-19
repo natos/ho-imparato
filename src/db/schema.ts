@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -52,7 +53,11 @@ export const progress = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.topic, t.level] })],
 );
 
-/** Spaced-repetition review deck (Leitner boxes). */
+/**
+ * Spaced-repetition review deck (Leitner boxes), one row per skill.
+ * box 1–5 → due after 1h / 1d / 3d / 7d / 21d; box 6 = remembered (graduated).
+ * misses counts every miss ever, and feeds the weekly challenge.
+ */
 export const reviewItems = pgTable(
   "review_items",
   {
@@ -60,11 +65,15 @@ export const reviewItems = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     topic: text("topic").notNull(),
-    itemId: text("item_id").notNull(),
+    itemId: text("item_id").notNull(), // the skill key, e.g. "pp:fare"
+    level: text("level"),
+    question: jsonb("question"), // last version seen, used if the skill can't be regenerated
     box: integer("box").notNull().default(1),
+    misses: integer("misses").notNull().default(0),
     dueAt: timestamp("due_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.topic, t.itemId] })],
+  (t) => [primaryKey({ columns: [t.userId, t.topic, t.itemId] }), index("review_due_idx").on(t.userId, t.dueAt)],
 );
 
 /** Every finished round — the leaderboard is computed from this. */
@@ -82,6 +91,18 @@ export const plays = pgTable(
     playedAt: timestamp("played_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [index("plays_played_at_idx").on(t.playedAt)],
+);
+
+/** One shared challenge per ISO week, frozen on first request so both players get the same questions. */
+export const weeklyChallenges = pgTable(
+  "weekly_challenges",
+  {
+    week: text("week").notNull(), // e.g. "2026-W47"
+    topic: text("topic").notNull(),
+    questions: jsonb("questions").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.week, t.topic] })],
 );
 
 export type User = typeof users.$inferSelect;

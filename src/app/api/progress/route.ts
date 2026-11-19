@@ -4,6 +4,7 @@ import { fail, getCurrentUser, json } from "@/lib/auth";
 import { getMyStars } from "@/lib/board";
 import { HEARTS, maxScore, starsFor } from "@/lib/game";
 import { isUnlocked } from "@/lib/unlock";
+import { parseResults, recordRoundResults } from "@/lib/review";
 import { findLevel } from "@/topics";
 
 const int = (v: unknown, min: number, max: number) =>
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
   const score = int(body.score, 0, maxScore(qpr));
   if (total === null || correct === null || hearts === null || score === null) return fail("That round doesn't add up.");
   const finished = body.finished === true && total === qpr && hearts > 0;
-  const missed: string[] = Array.isArray(body.missed) ? body.missed.filter((m: unknown) => typeof m === "string").slice(0, qpr) : [];
+  const results = parseResults(body.results, qpr + 2, level.id);
 
   const before = await getMyStars(user.id, topic.id);
   if (!isUnlocked(topic, index, before)) return fail("This stop is still locked.", 403);
@@ -66,16 +67,8 @@ export async function POST(req: Request) {
     xp,
   });
 
-  // Missed questions go into the review deck, due now.
-  if (missed.length) {
-    await db
-      .insert(schema.reviewItems)
-      .values(missed.map((itemId) => ({ userId: user.id, topic: topic.id, itemId, box: 1, dueAt: new Date() })))
-      .onConflictDoUpdate({
-        target: [schema.reviewItems.userId, schema.reviewItems.topic, schema.reviewItems.itemId],
-        set: { box: 1, dueAt: sql`now()` },
-      });
-  }
+  // Every answer feeds the Ripasso deck: misses come back in an hour, first-time rights tomorrow.
+  await recordRoundResults(user.id, topic.id, results);
 
   return json({
     xp,

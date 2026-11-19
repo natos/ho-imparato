@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, MotionConfig, useAnimationControls } from "motion/react";
 import { findLevel } from "@/topics";
-import type { Question } from "@/topics/types";
+import type { Level, Question } from "@/topics/types";
 import { BASE_POINTS, HEARTS, MAX_RETRIES, checkTyped, multiplier, secondsFor, starsFor, type Verdict } from "@/lib/game";
 import { sfx, speak, starSound } from "@/lib/sfx";
 import { api } from "@/lib/api";
@@ -13,7 +13,50 @@ type Phase = "intro" | "play" | "done";
 /** A question in the round queue. Retries are misses asked again a few questions later. */
 type Item = Question & { retry?: boolean };
 type Feedback = { verdict: Verdict; question: Item; given: string; points: number; timedOut?: boolean };
-type Result = { stars: number; best: number; newBest: boolean; unlockedNext: boolean; xp: number; mastered: boolean };
+type Result = {
+  stars?: number;
+  best?: number;
+  newBest?: boolean;
+  unlockedNext?: boolean;
+  xp: number;
+  mastered?: boolean;
+  promoted?: number;
+  reset?: number;
+  firstAttempt?: boolean;
+};
+type Mode = "level" | "ripasso" | "sfida";
+type AnswerLog = { question: Question; verdict: Verdict; level: string | null };
+
+/** Practice modes (Ripasso, weekly challenge) reuse the round with a fixed set of questions. */
+function practiceLevel(mode: Exclude<Mode, "level">, preset: Question[], alreadyPlayed?: boolean): Level {
+  return mode === "ripasso"
+    ? {
+        id: "ripasso",
+        stop: "Ripasso",
+        title: "Ripasso",
+        gloss: "Review what's due today",
+        intro: [
+          "Questions you missed, and ones you're about to forget.",
+          "Right → it comes back later (1 day, 3 days, a week…). Wrong → it comes back in an hour.",
+          "No hearts, no timer: 15 points per right answer.",
+        ],
+        questionsPerRound: preset.length,
+        build: () => preset,
+      }
+    : {
+        id: "sfida",
+        stop: "Sfida della settimana",
+        title: "La sfida della settimana",
+        gloss: "This week's challenge",
+        intro: [
+          "Built from the mistakes you both made most. New every Monday.",
+          "Same questions for both of you.",
+          alreadyPlayed ? "You've played it: replays are practice, no points." : "First try only: 20 points per right answer.",
+        ],
+        questionsPerRound: preset.length,
+        build: () => preset,
+      };
+}
 
 const shuffle = <T,>(xs: T[]) => [...xs].sort(() => Math.random() - 0.5);
 
@@ -30,10 +73,26 @@ function solved(q: Question): string | null {
     .trim();
 }
 
-export function Round({ topicId, levelId }: { topicId: string; levelId: string }) {
-  const found = findLevel(topicId, levelId)!;
-  const { level, topic, index } = found;
-  const next = topic.levels[index + 1];
+export function Round({
+  topicId,
+  levelId,
+  mode = "level",
+  preset,
+  week,
+  alreadyPlayed,
+}: {
+  topicId: string;
+  levelId?: string;
+  mode?: Mode;
+  preset?: Question[];
+  week?: string;
+  alreadyPlayed?: boolean;
+}) {
+  const practice = mode !== "level";
+  const found = practice ? null : findLevel(topicId, levelId!)!;
+  const level: Level = found ? found.level : practiceLevel(mode as Exclude<Mode, "level">, preset ?? [], alreadyPlayed);
+  const next = found ? found.topic.levels[found.index + 1] : undefined;
+  const index = found?.index ?? 0;
 
   const [phase, setPhase] = useState<Phase>("intro");
   const [questions, setQuestions] = useState<Item[]>([]);
@@ -42,7 +101,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
   const [streak, setStreak] = useState(0);
   const [score, setScore] = useState(0);
   const [correct, setCorrect] = useState(0);
-  const [missed, setMissed] = useState<string[]>([]);
+  const [log, setLog] = useState<AnswerLog[]>([]);
   const [answeredOriginals, setAnsweredOriginals] = useState(0);
   const [retriesLeft, setRetriesLeft] = useState(MAX_RETRIES);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -70,7 +129,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
     setStreak(0);
     setScore(0);
     setCorrect(0);
-    setMissed([]);
+    setLog([]);
     setAnsweredOriginals(0);
     setRetriesLeft(MAX_RETRIES);
     setFeedback(null);
@@ -91,7 +150,11 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
     if (!q || feedback) return;
     const ok = verdict !== "wrong";
     let points = 0;
-    if (!q.retry) setAnsweredOriginals((n) => n + 1);
+    if (!q.retry) {
+      setAnsweredOriginals((n) => n + 1);
+      const { retry: _retry, ...plain } = q; // eslint-disable-line @typescript-eslint/no-unused-vars
+      setLog((l) => [...l, { question: plain as Question, verdict, level: q.level ?? (practice ? null : level.id) }]);
+    }
     if (ok) {
       // A retry is a second chance: half points.
       points = Math.round(BASE_POINTS * mult * (q.retry ? 0.5 : 1));
@@ -108,9 +171,8 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
       // Hear the right version too, once the buzz is over.
       const line = solved(q);
       if (line) setTimeout(() => speak(line), 600);
-      if (!q.retry) {
+      if (!q.retry && !practice) {
         setHearts((h) => h - 1);
-        setMissed((m) => [...m, q.id]);
         // Ask it again 3 questions later (no heart at stake), up to MAX_RETRIES per round.
         if (retriesLeft > 0) {
           setRetriesLeft((r) => r - 1);
@@ -149,19 +211,14 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
   useEffect(() => {
     if (phase !== "done" || saving.current) return;
     saving.current = true;
-    api<Result>("/api/progress", {
-      topic: topic.id,
-      level: level.id,
-      correct,
-      total: answeredOriginals,
-      hearts,
-      finished,
-      score,
-      missed,
-    })
-      .then(setResult)
-      .catch((e) => setSaveError((e as Error).message));
-  }, [phase, topic.id, level.id, correct, answeredOriginals, hearts, finished, score, missed]);
+    const save =
+      mode === "ripasso"
+        ? api<Result>("/api/review", { topic: topicId, results: log })
+        : mode === "sfida"
+          ? api<Result>("/api/weekly", { topic: topicId, week, results: log })
+          : api<Result>("/api/progress", { topic: topicId, level: level.id, correct, total: answeredOriginals, hearts, finished, score, results: log });
+    save.then(setResult).catch((e) => setSaveError((e as Error).message));
+  }, [phase, mode, topicId, week, level.id, correct, answeredOriginals, hearts, finished, score, log]);
 
   return (
     <MotionConfig reducedMotion="user">
@@ -177,7 +234,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
               <div className="h-4 flex-1 overflow-hidden rounded-full border-[3px] border-[var(--edge)] bg-[var(--surface)]" role="progressbar" aria-valuemin={0} aria-valuemax={questions.length} aria-valuenow={i} aria-label="Avanzamento">
                 <motion.div className="h-full bg-[var(--basil)]" animate={{ width: `${(i / questions.length) * 100}%` }} />
               </div>
-              <Hearts n={hearts} />
+              {!practice && <Hearts n={hearts} />}
             </>
           ) : (
             <p className="font-display text-xl">{level.stop}</p>
@@ -193,6 +250,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
               </motion.span>
             )}
             {q?.retry && <span className="text-[var(--muted)]">Di nuovo · no heart at stake</span>}
+            {practice && <span className="text-[var(--muted)]">{level.title}</span>}
             {level.timed && <span className={secondsLeft <= 3 ? "text-[var(--danger)]" : ""}>⏱ {secondsLeft}s</span>}
           </div>
         )}
@@ -200,7 +258,7 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
         {phase === "intro" && (
           <section className="ticket mt-6 flex flex-col gap-4 p-6">
             <p className="text-[var(--muted)]">
-              Fermata {index + 1} · {level.gloss}
+              {practice ? level.gloss : `Fermata ${index + 1} · ${level.gloss}`}
             </p>
             <h1 className="font-display text-3xl leading-tight">{level.title}</h1>
             <ul className="flex flex-col gap-2">
@@ -210,9 +268,11 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
                 </li>
               ))}
             </ul>
-            <p className="text-sm text-[var(--muted)]">
-              {level.questionsPerRound} questions · {HEARTS} hearts{level.timed ? " · a timer on each question" : ""}. Stars = hearts left at the end. Misses come back once for a second try.
-            </p>
+            {!practice && (
+              <p className="text-sm text-[var(--muted)]">
+                {level.questionsPerRound} questions · {HEARTS} hearts{level.timed ? " · a timer on each question" : ""}. Stars = hearts left at the end. Misses come back once for a second try.
+              </p>
+            )}
             <button className="btn btn-primary" onClick={start} autoFocus>
               Inizia
             </button>
@@ -240,7 +300,9 @@ export function Round({ topicId, levelId }: { topicId: string; levelId: string }
           </motion.section>
         )}
 
-        {phase === "done" && (
+        {phase === "done" && practice && <PracticeResults mode={mode} correct={correct} answered={answeredOriginals} result={result} saveError={saveError} />}
+
+        {phase === "done" && !practice && (
           <Results
             stars={stars}
             finished={finished}
@@ -557,6 +619,50 @@ function Results({
           Torna alla mappa
         </Link>
       </div>
+    </section>
+  );
+}
+
+function PracticeResults({
+  mode,
+  correct,
+  answered,
+  result,
+  saveError,
+}: {
+  mode: Mode;
+  correct: number;
+  answered: number;
+  result: Result | null;
+  saveError: string | null;
+}) {
+  useEffect(() => {
+    if (correct / Math.max(1, answered) >= 0.7) sfx.bravo();
+  }, [correct, answered]);
+  return (
+    <section className="ticket mt-6 flex flex-col items-center gap-4 p-6 text-center">
+      <h1 className="font-display text-4xl">{correct === answered ? "Perfetto!" : correct / Math.max(1, answered) >= 0.7 ? "Bravo!" : "Avanti così!"}</h1>
+      <p className="text-lg font-bold">
+        {correct}/{answered} giuste
+      </p>
+      {result && mode === "ripasso" && (
+        <p className="text-[var(--muted)]">
+          {result.promoted} moved up — they&apos;ll come back later. {result.reset ? `${result.reset} back to the start.` : ""}
+        </p>
+      )}
+      {result && (
+        <p className="font-bold text-[var(--success)]">
+          +{result.xp} punti{mode === "sfida" && result.firstAttempt === false ? " · replay, practice only" : ""}
+        </p>
+      )}
+      {saveError && (
+        <p role="alert" className="error">
+          Couldn&apos;t save: {saveError}
+        </p>
+      )}
+      <Link href="/" className="btn btn-primary">
+        Torna alla mappa
+      </Link>
     </section>
   );
 }

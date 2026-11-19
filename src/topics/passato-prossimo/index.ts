@@ -136,6 +136,7 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
       {
         kind: "type" as const,
         task: `Write the past participle of “${v.inf}”`,
+        skill: `pp:${v.inf}`,
         id: `${idPrefix}-type-${v.inf}`,
         prompt: `${v.inf} → ___`,
         hint: v.en,
@@ -146,6 +147,7 @@ function participleQuestions(vs: Verb[], idPrefix: string, irregular: boolean): 
       {
         kind: "choice" as const,
         task: "Pick the past participle",
+        skill: `pp:${v.inf}`,
         id: `${idPrefix}-choice-${v.inf}`,
         prompt: v.inf,
         hint: v.en,
@@ -171,6 +173,7 @@ function auxQuestions(): Question[] {
   return fixedAux([...regulars, ...irr1]).map((v) => ({
     kind: "choice" as const,
     task: "Does this verb take avere or essere?",
+    skill: `aux:${v.inf}`,
     id: `aux-${v.inf}`,
     prompt: v.inf,
     hint: v.en,
@@ -195,6 +198,7 @@ function auxFormQuestions(): Question[] {
     out.push({
       kind: "type",
       task: "Write the verb in the passato prossimo (auxiliary + participle)",
+      skill: `auxform:${v.inf}`,
       id: `auxform-type-${v.inf}`,
       prompt: `${s.text} ___${rest(v)}. (${v.inf})`,
       hint: v.en,
@@ -208,6 +212,7 @@ function auxFormQuestions(): Question[] {
     out.push({
       kind: "choice",
       task: "Pick the right form of avere or essere",
+      skill: `auxform:${v.inf}`,
       id: `auxform-${v.inf}`,
       prompt: `${s.text} ___ ${v.pp.slice(0, -1)}_${rest(v)}.`,
       hint: `${v.inf}: ${v.en}`,
@@ -238,7 +243,7 @@ function agreementQuestions(): Question[] {
     [...ess, ...av].forEach((v, k) => {
       const { aux, pp, essere } = perfect(s, v);
       const forms = [agree(v.pp, "m", false), agree(v.pp, "f", false), agree(v.pp, "m", true), agree(v.pp, "f", true)];
-      const base = { id: `agree-${v.inf}-${s.text}`, hint: `${v.inf}: ${v.en}`, explain: agreementExplain(s, essere) };
+      const base = { id: `agree-${v.inf}-${s.text}`, skill: `agree:${s.g}${s.pl ? "pl" : "sg"}:${essere ? "essere" : "avere"}`, hint: `${v.inf}: ${v.en}`, explain: agreementExplain(s, essere) };
       // About 1 in 4 is typed, so the ending has to be produced, not just spotted.
       out.push(
         k === 0
@@ -270,6 +275,7 @@ function reflexiveQuestions(): Question[] {
         {
           kind: "choice",
           task: "Pick the reflexive pronoun",
+          skill: `refl-pron:${s.person}`,
           id: `${id}-pron`,
           prompt: `${s.text} ___ ${aux} ${pp}${rest}.`,
           hint: r.en,
@@ -280,6 +286,7 @@ function reflexiveQuestions(): Question[] {
         {
           kind: "choice",
           task: "Pick the verb in the passato prossimo",
+          skill: `refl:${r.inf}`,
           id: `${id}-form`,
           prompt: `${s.text} ___${rest}. (${r.inf})`,
           hint: r.en,
@@ -290,6 +297,7 @@ function reflexiveQuestions(): Question[] {
         {
           kind: "type",
           task: "Write the verb in the passato prossimo: pronoun + auxiliary + participle",
+          skill: `refl:${r.inf}`,
           id: `${id}-type`,
           prompt: `${s.text} ___${rest}. (${r.inf})`,
           hint: r.en,
