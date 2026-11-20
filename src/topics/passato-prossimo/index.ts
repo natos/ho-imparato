@@ -197,7 +197,7 @@ function auxFormQuestions(): Question[] {
     // Production: write auxiliary + participle — both decisions at once.
     out.push({
       kind: "type",
-      task: "Write the passato prossimo",
+      task: "Write the passato prossimo: auxiliary + participle",
       skill: `auxform:${v.inf}`,
       id: `auxform-type-${v.inf}`,
       prompt: `${s.text} ___${rest(v)}. (${v.inf})`,
@@ -296,7 +296,7 @@ function reflexiveQuestions(): Question[] {
         },
         {
           kind: "type",
-          task: "Write the passato prossimo, with the pronoun",
+          task: "Write the passato prossimo: pronoun + auxiliary + participle",
           skill: `refl:${r.inf}`,
           id: `${id}-type`,
           prompt: `${s.text} ___${rest}. (${r.inf})`,

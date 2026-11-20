@@ -378,7 +378,11 @@ function Hearts({ n }: { n: number }) {
 }
 
 /** Renders "___" as a visible blank to fill. */
-function WithGap({ text }: { text: string }) {
+const wordCount = (q: Question) => (q.kind === "type" ? q.answer.trim().split(/\s+/).length : 1);
+const WORDS = ["", "1 parola (1 word)", "2 parole (2 words)", "3 parole (3 words)", "4 parole (4 words)"];
+
+/** Renders "___" as a visible blank to fill: one dash line per word the answer needs. */
+function WithGap({ text, words = 1 }: { text: string; words?: number }) {
   const parts = text.split("___");
   return (
     <>
@@ -386,8 +390,12 @@ function WithGap({ text }: { text: string }) {
         <span key={k}>
           {part}
           {k < parts.length - 1 && (
-            <span className="mx-1 inline-block min-w-16 translate-y-1 border-b-[3px] border-dashed border-[var(--brand)]" role="img" aria-label="spazio vuoto (blank)">
-              &nbsp;
+            <span className="mx-1 inline-flex gap-1.5" role="img" aria-label={words > 1 ? `spazio vuoto, ${words} parole (blank, ${words} words)` : "spazio vuoto (blank)"}>
+              {Array.from({ length: words }, (_, w) => (
+                <span key={w} className="inline-block min-w-12 translate-y-1 border-b-[3px] border-dashed border-[var(--brand)]">
+                  &nbsp;
+                </span>
+              ))}
             </span>
           )}
         </span>
@@ -408,7 +416,7 @@ function QuestionCard({ q, focus }: { q: Question; focus: boolean }) {
     <div ref={ref} tabIndex={-1} className="ticket flex flex-col gap-2 p-5 focus:outline-none">
       <p className="font-bold">{q.task}</p>
       <p className={`font-extrabold leading-snug ${isAux ? "font-display text-5xl" : "text-2xl"}`} lang={q.kind === "tiles" ? "en" : "it"}>
-        <WithGap text={q.prompt} />
+        <WithGap text={q.prompt} words={wordCount(q)} />
       </p>
       {"hint" in q && q.hint && <p className="text-[var(--muted)]">{q.hint}</p>}
     </div>
@@ -463,7 +471,7 @@ function Choices({ q, locked, onAnswer }: { q: Extract<Question, { kind: "choice
   );
 }
 
-function Typed({ locked, onAnswer }: { q: Extract<Question, { kind: "type" }>; locked: boolean; onAnswer: (t: string) => void }) {
+function Typed({ q, locked, onAnswer }: { q: Extract<Question, { kind: "type" }>; locked: boolean; onAnswer: (t: string) => void }) {
   const [value, setValue] = useState("");
   const ref = useRef<HTMLInputElement>(null);
   const caret = useRef<number | null>(null);
@@ -495,7 +503,7 @@ function Typed({ locked, onAnswer }: { q: Extract<Question, { kind: "type" }>; l
         spellCheck={false}
         lang="it"
         aria-label="La tua risposta (your answer)"
-        placeholder="Scrivi qui (type here)"
+        placeholder={`Scrivi ${WORDS[wordCount(q)] ?? "qui (type here)"}`}
       />
       <AccentKeys
         onKey={(k) => {
@@ -567,6 +575,10 @@ function FeedbackSheet({ f, onNext, last }: { f: Feedback; onNext: () => void; l
   const ok = f.verdict !== "wrong";
   const right = f.question.kind === "tiles" ? f.question.answer.join(" ") : f.question.answer;
   const sentence = solved(f.question);
+  // Wrote too few words (e.g. only "siamo")? Say that first: it's the real mistake.
+  const need = wordCount(f.question);
+  const gave = f.given.trim() ? f.given.trim().split(/\s+/).length : 0;
+  const short = !ok && f.question.kind === "type" && gave > 0 && gave < need;
   const btn = useRef<HTMLButtonElement>(null);
   // One tap only: the sheet stays on screen while it slides away, and a double-tap would skip a question.
   const [used, setUsed] = useState(false);
@@ -596,6 +608,12 @@ function FeedbackSheet({ f, onNext, last }: { f: Feedback; onNext: () => void; l
           <button type="button" onClick={() => speak(sentence)} className="self-start text-left font-semibold underline underline-offset-4">
             🔊 {sentence}
           </button>
+        )}
+        {short && (
+          <p className="font-bold">
+            You wrote {gave} word{gave > 1 ? "s" : ""}; this needs {need}
+            {need === 2 ? ": auxiliary + participle." : need === 3 ? ": pronoun + auxiliary + participle." : "."}
+          </p>
         )}
         <p>{f.question.explain}</p>
         <button
