@@ -19,6 +19,7 @@
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.1.0",
     "@vercel/blob": "^2.9.0",
+    "@vercel/speed-insights": "^2.1.0",
     "drizzle-orm": "^0.45.4",
     "jose": "^6.2.18",
     "motion": "^14.14.0",
