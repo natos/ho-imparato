@@ -14,7 +14,7 @@
     "content:review": "tsx scripts/content-review.ts"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.17",
+    "@electric-sql/pglite": "^0.6.0",
     "@neondatabase/serverless": "^1.2.1",
     "@simplewebauthn/browser": "^14.0.0",
     "@simplewebauthn/server": "^14.1.0",
