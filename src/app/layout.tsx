@@ -3,6 +3,7 @@ import { Gabarito, Shrikhand } from "next/font/google";
 import "./globals.css";
 import { AudioUnlock } from "@/components/AudioUnlock";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { FeedbackWidget } from "@/components/Feedback";
 
 const shrikhand = Shrikhand({ variable: "--font-shrikhand", weight: "400", subsets: ["latin"] });
 const gabarito = Gabarito({ variable: "--font-gabarito", subsets: ["latin"] });
@@ -26,6 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <AudioUnlock />
         {children}
         <SpeedInsights />
+        <FeedbackWidget />
       </body>
     </html>
   );

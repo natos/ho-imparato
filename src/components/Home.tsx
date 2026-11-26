@@ -10,6 +10,7 @@ import { TOPICS } from "@/topics";
 import type { Level } from "@/topics/types";
 import { Avatar } from "./Avatar";
 import { Wordmark } from "./Wordmark";
+import { FeedbackIdentify, FeedbackLink } from "./Feedback";
 
 /*
   Copy rule: game words in Italian (Tu, Gioca, Pari, Mappa, In arrivo),
@@ -52,6 +53,7 @@ export function Home({
 
       <main className="mx-auto flex w-full max-w-[640px] flex-1 flex-col gap-4 px-4 py-5">
         <h1 className="sr-only">Ciao, {user.name}!</h1>
+        <FeedbackIdentify id={user.id} name={user.name} />
 
         <Next
           topicId={topic.id}
@@ -136,6 +138,7 @@ export function Home({
             })}
           </ol>
         </section>
+        <FeedbackLink className="self-center text-[var(--muted)]" />
       </main>
     </>
   );
@@ -338,7 +341,7 @@ function Classifica({ me, rivals }: { me: Me; rivals: Player[] }) {
       </button>
 
       {open && (
-        <div id="classifica" className="flex flex-col gap-2 px-4 pb-3">
+        <div id="classifica" className="flex flex-col gap-2 px-4 pb-3" data-sentioo-mask>
           <div className="flex gap-2" role="radiogroup" aria-label="Classifica">
             {(["week", "all"] as const).map((b) => (
               <button

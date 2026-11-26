@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, useLayoutEffect } from "react";
 import Link from "next/link";
+import { FeedbackLink } from "./Feedback";
 import { AnimatePresence, motion, MotionConfig, useAnimationControls } from "motion/react";
 import { findLevel } from "@/topics";
 import type { Level, Question } from "@/topics/types";
@@ -735,6 +736,7 @@ function Results({
         <Link href="/" className="btn btn-ghost">
           Torna alla mappa
         </Link>
+        <FeedbackLink className="self-center text-sm text-[var(--muted)]" />
       </div>
     </section>
   );
