@@ -5,6 +5,7 @@ import { getMyStars } from "@/lib/board";
 import { HEARTS, maxScore, starsFor } from "@/lib/game";
 import { isUnlocked } from "@/lib/unlock";
 import { parseResults, recordRoundResults } from "@/lib/review";
+import { recordAnswers } from "@/lib/answers";
 import { findLevel } from "@/topics";
 
 const int = (v: unknown, min: number, max: number) =>
@@ -69,6 +70,7 @@ export async function POST(req: Request) {
 
   // Every answer feeds the Ripasso deck: misses come back in an hour, first-time rights tomorrow.
   await recordRoundResults(user.id, topic.id, results);
+  await recordAnswers(user.id, topic.id, "level", body.answers, qpr + 2);
 
   return json({
     xp,

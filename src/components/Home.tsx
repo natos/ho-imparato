@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import type { CurrentUser } from "@/lib/auth";
 import type { Player } from "@/lib/board";
@@ -35,7 +35,7 @@ export function Home({
 }) {
   const topic = TOPICS[topicId];
   const levels = topic.levels;
-  const me = players.find((p) => p.id === user.id) ?? { ...user, stars: 0, points: 0, stop: 0 };
+  const me = players.find((p) => p.id === user.id) ?? { ...user, stars: 0, points: 0, weekPoints: 0, stop: 0 };
   const rivals = players.filter((p) => p.id !== user.id);
   // Your stop = the first level you haven't cleared yet (or the last one).
   const firstUncleared = levels.findIndex((l) => !(myStars[l.id] > 0));
@@ -129,27 +129,7 @@ export function Home({
                     )}
                   </Link>
                   <div className="ml-auto flex items-center gap-3">
-                    {tokens.length > 0 && (
-                      <span className="flex -space-x-3">
-                        <span className="sr-only">
-                          Qui: {tokens.map((p) => (p.id === user.id ? "tu" : p.name)).join(", ")}
-                        </span>
-                        {tokens.slice(-2).map((p) => (
-                          <span
-                            key={p.id}
-                            aria-hidden
-                            className={`rounded-full ${p.id === user.id ? "relative z-10 ring-[3px] ring-[var(--brand)]" : ""}`}
-                          >
-                            <Avatar name={p.name} url={p.avatarUrl} size={32} />
-                          </span>
-                        ))}
-                        {tokens.length > 2 && (
-                          <span aria-hidden className="relative z-20 flex h-8 min-w-8 items-center justify-center rounded-full border-[3px] border-[var(--edge)] bg-[var(--surface)] px-1 text-xs font-extrabold">
-                            +{tokens.length - 2}
-                          </span>
-                        )}
-                      </span>
-                    )}
+                    {tokens.length > 0 && <StopTokens tokens={tokens} meId={user.id} />}
                   </div>
                 </li>
               );
@@ -237,7 +217,7 @@ function Rows({
   weekly,
   anyCleared,
 }: {
-  me: Player | (CurrentUser & { stars: number; points: number });
+  me: Me;
   rivals: Player[];
   inviteCode: string | null;
   review: { due: number; remembered: number };
@@ -248,7 +228,7 @@ function Rows({
   const showReview = review.due > 0 && review.due < 5;
   return (
     <ul className="ticket flex flex-col divide-y-[2px] divide-dashed divide-[color-mix(in_srgb,var(--edge)_35%,transparent)] py-1">
-      <li>{rivals.length ? <DuelRow me={me} rivals={rivals} /> : <Invite inviteCode={inviteCode} />}</li>
+      <li>{rivals.length ? <Classifica me={me} rivals={rivals} /> : <Invite inviteCode={inviteCode} />}</li>
       {showReview && (
         <li>
           <Link href="/ripasso" className={row}>
@@ -276,26 +256,164 @@ function Rows({
   );
 }
 
-function DuelRow({ me, rivals }: { me: Player | (CurrentUser & { stars: number; points: number }); rivals: Player[] }) {
-  // Stars decide who's ahead; points break a tie.
-  const all = [me, ...rivals].sort((a, b) => b.stars - a.stars || b.points - a.points);
-  const tied = all[0].stars === all[1].stars && all[0].points === all[1].points;
-  const verdict = tied ? "Pari!" : all[0].id === me.id ? "Sei avanti tu!" : `${all[0].name} è avanti`;
-  // Two players: you vs them. More: you vs whoever leads (or the runner-up if that's you).
-  const rival = all.find((p) => p.id !== me.id)!;
+type Me = Player | (CurrentUser & { stars: number; points: number; weekPoints: number });
+type Board = "week" | "all";
+
+// Remember which board you last looked at (per device; falls back to the week).
+const BOARD_KEY = "classifica-board";
+const boardListeners = new Set<() => void>();
+function readBoard(): Board {
+  try {
+    return localStorage.getItem(BOARD_KEY) === "all" ? "all" : "week";
+  } catch {
+    return "week";
+  }
+}
+function writeBoard(b: Board) {
+  try {
+    localStorage.setItem(BOARD_KEY, b);
+  } catch {
+    /* fine */
+  }
+  boardListeners.forEach((f) => f());
+}
+const subscribeBoard = (f: () => void) => (boardListeners.add(f), () => boardListeners.delete(f));
+
+/**
+ * The class leaderboard. Collapsed: your rank in one line. Open: top 5, plus you if you're further down.
+ * "Settimana" ranks by points since Monday, so a newcomer can top it; "Sempre" by stars, then points.
+ */
+function Classifica({ me, rivals }: { me: Me; rivals: Player[] }) {
+  const [open, setOpen] = useState(false);
+  const board = useSyncExternalStore(subscribeBoard, readBoard, () => "week" as Board);
+  const score = (p: Me) => (board === "week" ? p.weekPoints : p.points);
+  const all = [me, ...rivals].sort((a, b) =>
+    board === "week" ? b.weekPoints - a.weekPoints || b.stars - a.stars : b.stars - a.stars || b.points - a.points,
+  );
+  // Equal scores share a rank (1, 2, 2, 4…).
+  const same = (a: Me, b: Me) => (board === "week" ? a.weekPoints === b.weekPoints : a.stars === b.stars && a.points === b.points);
+  const ranks = all.map((p) => all.findIndex((q) => same(p, q)));
+  const mine = all.findIndex((p) => p.id === me.id);
+  const myRank = ranks[mine] + 1;
+  const quiet = board === "week" && all.every((p) => p.weekPoints === 0);
+  const tiedTop = all.length > 1 && same(all[0], all[1]);
+  const verdict = quiet
+    ? "Settimana nuova: tutti a zero"
+    : myRank === 1
+      ? tiedTop
+        ? "Pari in testa!"
+        : "Sei in testa!"
+      : `Sei ${myRank}° su ${all.length}`;
+  const top = all.slice(0, 5);
+  const showMe = mine >= 5;
+
   return (
-    <div className={row} aria-label={`${verdict} Tu ${me.stars} stelle, ${rival.name} ${rival.stars} stelle`}>
-      <span className="flex -space-x-2" aria-hidden>
-        <span className="rounded-full ring-[3px] ring-[var(--brand)]">
+    <div>
+      <button type="button" className={`${row} w-full text-left`} aria-expanded={open} aria-controls="classifica" onClick={() => setOpen((o) => !o)}>
+        <span className="flex -space-x-2" aria-hidden>
+          {all.slice(0, 3).map((p) => (
+            <span key={p.id} className={`rounded-full ${p.id === me.id ? "relative z-10 ring-[3px] ring-[var(--brand)]" : ""}`}>
+              <Avatar name={p.name} url={p.avatarUrl} size={32} />
+            </span>
+          ))}
+        </span>
+        <span className="flex flex-col leading-tight">
+          <span className="font-bold">{verdict}</span>
+          <span className="text-sm text-[var(--muted)]">Classifica · {board === "week" ? "questa settimana" : "sempre"}</span>
+        </span>
+        <svg
+          className={`ml-auto shrink-0 text-[var(--muted)] transition-transform ${open ? "rotate-90" : ""}`}
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+
+      {open && (
+        <div id="classifica" className="flex flex-col gap-2 px-4 pb-3">
+          <div className="flex gap-2" role="radiogroup" aria-label="Classifica">
+            {(["week", "all"] as const).map((b) => (
+              <button
+                key={b}
+                type="button"
+                role="radio"
+                aria-checked={board === b}
+                onClick={() => writeBoard(b)}
+                className={`rounded-full border-[2.5px] px-3 py-1 text-sm font-bold ${
+                  board === b ? "border-[var(--edge)] bg-[var(--brand)] text-[var(--brand-fg)]" : "border-[var(--locked)] text-[var(--muted)]"
+                }`}
+              >
+                {b === "week" ? "Settimana" : "Sempre"}
+              </button>
+            ))}
+          </div>
+          <ol className="flex flex-col">
+            {top.map((p, k) => (
+              <Place key={p.id} p={p} rank={ranks[k] + 1} isMe={p.id === me.id} stars={board === "all"} value={score(p)} />
+            ))}
+            {showMe && (
+              <>
+                {mine > 5 && (
+                  <li aria-hidden className="py-0.5 pl-2 text-[var(--muted)]">
+                    ⋮
+                  </li>
+                )}
+                <Place p={me} rank={myRank} isMe stars={board === "all"} value={score(me)} />
+              </>
+            )}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Place({ p, rank, isMe, stars, value }: { p: Me; rank: number; isMe: boolean; stars: boolean; value: number }) {
+  return (
+    <li className={`flex items-center gap-3 rounded-xl px-2 py-1.5 ${isMe ? "bg-[color-mix(in_srgb,var(--brand)_15%,transparent)] font-bold" : ""}`}>
+      <span className="w-7 text-right font-extrabold tabular-nums">{rank}°</span>
+      <Avatar name={p.name} url={p.avatarUrl} size={28} />
+      <span className="min-w-0 flex-1 truncate">{isMe ? "Tu" : p.name}</span>
+      {stars && (
+        <span className="flex items-center gap-0.5 text-sm font-extrabold">
+          <Star filled /> {p.stars}
+        </span>
+      )}
+      <span className="w-16 text-right text-sm font-extrabold tabular-nums">{value} pt</span>
+    </li>
+  );
+}
+
+/** On the map: your own token, and a count of everyone else at that stop. */
+function StopTokens({ tokens, meId }: { tokens: Player[]; meId: string }) {
+  const me = tokens.find((p) => p.id === meId);
+  const others = tokens.length - (me ? 1 : 0);
+  return (
+    <span className="flex items-center -space-x-2">
+      <span className="sr-only">
+        {me ? "Tu sei qui" : ""}
+        {me && others ? " e " : ""}
+        {others ? `${others} ${others === 1 ? "altro" : "altri"}` : ""}
+      </span>
+      {me && (
+        <span aria-hidden className="relative z-10 rounded-full ring-[3px] ring-[var(--brand)]">
           <Avatar name={me.name} url={me.avatarUrl} size={32} />
         </span>
-        <Avatar name={rival.name} url={rival.avatarUrl} size={32} />
-      </span>
-      <span className="font-bold">{verdict}</span>
-      <span className="ml-auto flex items-center gap-1 text-sm font-extrabold" aria-hidden>
-        <Star filled /> {me.stars} <span className="font-semibold text-[var(--muted)]">vs</span> <Star filled /> {rival.stars}
-      </span>
-    </div>
+      )}
+      {others > 0 && (
+        <span aria-hidden className="flex h-8 min-w-8 items-center justify-center rounded-full border-[3px] border-[var(--edge)] bg-[var(--surface)] px-1 text-xs font-extrabold">
+          {me ? `+${others}` : others}
+        </span>
+      )}
+    </span>
   );
 }
 

@@ -104,6 +104,9 @@ export function Round({
   const [score, setScore] = useState(0);
   const [correct, setCorrect] = useState(0);
   const [log, setLog] = useState<AnswerLog[]>([]);
+  // Every answer (retries too) with the time it took — the answer log.
+  const [answers, setAnswers] = useState<{ skill: string; kind: string; verdict: Verdict; retry: boolean; ms: number; level: string | null }[]>([]);
+  const shownAt = useRef(0);
   const [answeredOriginals, setAnsweredOriginals] = useState(0);
   const [retriesLeft, setRetriesLeft] = useState(MAX_RETRIES);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -141,6 +144,7 @@ export function Round({
     setScore(0);
     setCorrect(0);
     setLog([]);
+    setAnswers([]);
     setAnsweredOriginals(0);
     setRetriesLeft(MAX_RETRIES);
     setFeedback(null);
@@ -184,6 +188,10 @@ export function Round({
     if (!q || feedback) return;
     const ok = verdict !== "wrong";
     let points = 0;
+    setAnswers((a) => [
+      ...a,
+      { skill: q.skill ?? q.id, kind: q.kind, verdict, retry: !!q.retry, ms: Math.round(performance.now() - shownAt.current), level: q.level ?? (practice ? null : level.id) },
+    ]);
     if (!q.retry) {
       setAnsweredOriginals((n) => n + 1);
       const { retry: _retry, ...plain } = q; // eslint-disable-line @typescript-eslint/no-unused-vars
@@ -220,6 +228,11 @@ export function Round({
     setFeedback({ verdict, question: q, given, points, timedOut });
   }
 
+  // Start the clock when a question appears.
+  useEffect(() => {
+    if (phase === "play") shownAt.current = performance.now();
+  }, [phase, i]);
+
   // Boss: each question has its own countdown; running out counts as a miss.
   useEffect(() => {
     if (!level.timed || phase !== "play" || feedback || !q) return;
@@ -247,12 +260,12 @@ export function Round({
     saving.current = true;
     const save =
       mode === "ripasso"
-        ? api<Result>("/api/review", { topic: topicId, results: log })
+        ? api<Result>("/api/review", { topic: topicId, results: log, answers })
         : mode === "sfida"
-          ? api<Result>("/api/weekly", { topic: topicId, week, results: log })
-          : api<Result>("/api/progress", { topic: topicId, level: level.id, correct, total: answeredOriginals, hearts, finished, score, results: log });
+          ? api<Result>("/api/weekly", { topic: topicId, week, results: log, answers })
+          : api<Result>("/api/progress", { topic: topicId, level: level.id, correct, total: answeredOriginals, hearts, finished, score, results: log, answers });
     save.then(setResult).catch((e) => setSaveError((e as Error).message));
-  }, [phase, mode, topicId, week, level.id, correct, answeredOriginals, hearts, finished, score, log, saveTry]);
+  }, [phase, mode, topicId, week, level.id, correct, answeredOriginals, hearts, finished, score, log, answers, saveTry]);
 
   return (
     <MotionConfig reducedMotion="user">

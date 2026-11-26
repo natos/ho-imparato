@@ -1,6 +1,7 @@
 import { fail, getCurrentUser, json } from "@/lib/auth";
 import { getDb, schema } from "@/db";
 import { parseResults, recordRoundResults, topicExists } from "@/lib/review";
+import { recordAnswers } from "@/lib/answers";
 import { WEEKLY_POINTS, WEEKLY_SIZE, weekKey, weeklyStatus } from "@/lib/weekly";
 
 /** Finish the weekly challenge. Only the first attempt each week scores; misses feed Ripasso. */
@@ -20,5 +21,6 @@ export async function POST(req: Request) {
   const db = await getDb();
   await db.insert(schema.plays).values({ id: crypto.randomUUID(), userId: user.id, topic, level: `sfida:${weekKey()}`, score: correct * WEEKLY_POINTS, xp });
   await recordRoundResults(user.id, topic, results);
+  await recordAnswers(user.id, topic, "sfida", body.answers, WEEKLY_SIZE);
   return json({ xp, firstAttempt: !played, correct, total: results.length });
 }

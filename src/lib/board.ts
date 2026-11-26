@@ -8,6 +8,8 @@ export type Player = {
   avatarUrl: string | null;
   stars: number;
   points: number;
+  /** points earned since Monday 00:00 UTC — the weekly classifica, so newcomers can compete */
+  weekPoints: number;
   /** index of the stop this player is at on the current route (0-based) */
   stop: number;
 };
@@ -27,10 +29,11 @@ export async function getBoard(topic: string): Promise<Player[]> {
       stars: sql<number>`coalesce((select sum(p.stars) from progress p where p.user_id = "users"."id" and p.topic = ${topic}), 0)`.mapWith(Number),
       cleared: sql<number>`coalesce((select count(*) from progress p where p.user_id = "users"."id" and p.topic = ${topic} and p.stars > 0), 0)`.mapWith(Number),
       points: sql<number>`coalesce((select sum(x.xp) from plays x where x.user_id = "users"."id" and x.topic = ${topic}), 0)`.mapWith(Number),
+      weekPoints: sql<number>`coalesce((select sum(x.xp) from plays x where x.user_id = "users"."id" and x.topic = ${topic} and x.played_at >= date_trunc('week', now() at time zone 'UTC') at time zone 'UTC'), 0)`.mapWith(Number),
     })
     .from(schema.users)
     .orderBy(schema.users.createdAt);
-  return rows.map((r) => ({ id: r.id, name: r.name, avatarUrl: r.avatarUrl, stars: r.stars, points: r.points, stop: r.cleared }));
+  return rows.map((r) => ({ id: r.id, name: r.name, avatarUrl: r.avatarUrl, stars: r.stars, points: r.points, weekPoints: r.weekPoints, stop: r.cleared }));
 }
 
 /** level id → best stars for one player on one topic. */

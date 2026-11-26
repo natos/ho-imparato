@@ -105,4 +105,28 @@ export const weeklyChallenges = pgTable(
   (t) => [primaryKey({ columns: [t.week, t.topic] })],
 );
 
+/**
+ * Every answer, one row each — the raw material for "are we improving?".
+ * Written alongside a round's save; never read on the hot path.
+ */
+export const answers = pgTable(
+  "answers",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    topic: text("topic").notNull(),
+    level: text("level"),
+    mode: text("mode").notNull(), // "level" | "ripasso" | "sfida"
+    skill: text("skill").notNull(),
+    kind: text("kind").notNull(), // choice | type | tiles
+    verdict: text("verdict").notNull(), // right | accent | wrong
+    retry: integer("retry").notNull().default(0), // 1 = the second-chance repeat in a round
+    ms: integer("ms"), // time from showing the question to answering
+    answeredAt: timestamp("answered_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("answers_user_idx").on(t.userId, t.answeredAt), index("answers_skill_idx").on(t.topic, t.skill)],
+);
+
 export type User = typeof users.$inferSelect;

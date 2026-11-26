@@ -15,6 +15,13 @@
       "when": 1795095075354,
       "tag": "0001_ripasso-and-weekly",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795698106550,
+      "tag": "0002_answer-log",
+      "breakpoints": true
     }
   ]
 }
